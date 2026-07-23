@@ -96,44 +96,102 @@ async def _merge_single(clip: dict, output_path: str, size: str, resolution: str
 
 
 async def _concat_clips(clips: list[dict], output_path: str, size: str, resolution: str) -> dict:
-    """Concatenate multiple clips."""
-    concat_file = str(UPLOAD_DIR / f"concat_{uuid.uuid4().hex}.txt")
+    """Concatenate multiple clips with per-clip subtitle + audio overlay."""
+    valid_clips = [c for c in clips if c.get("video_path") and os.path.exists(c.get("video_path", ""))]
+
+    if not valid_clips:
+        return {"ok": False, "error": "没有有效的视频片段"}
 
     try:
-        # Write concat file
-        lines = []
-        for c in clips:
-            vp = c.get("video_path", "")
-            if vp and os.path.exists(vp):
-                lines.append(f"file '{vp.replace(chr(39), chr(39)+chr(92)+chr(39)+chr(39))}'")
+        cmd = ["ffmpeg", "-y"]
+        filter_parts = []
+        v_indices = []
+        a_indices = []
+        has_audio = False
 
-        if not lines:
-            return {"ok": False, "error": "没有有效的视频片段"}
+        scale = _scale_filter(size, resolution)
 
-        with open(concat_file, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines))
+        for i, c in enumerate(valid_clips):
+            # Video input
+            vi = len([x for x in cmd if x == "-i"])
+            cmd.extend(["-i", c["video_path"]])
+            v_indices.append(vi)
 
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "concat", "-safe", "0",
-            "-i", concat_file,
-            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
-            "-c:a", "aac", "-b:a", "128k",
-            "-movflags", "+faststart",
-            output_path,
-        ]
+            # Subtitle text
+            sub_text = c.get("subtitle", "").replace(":", "\\:").replace("'", "\\'").replace(",", "\\,")
+            
+            # Scale filter
+            vf = f"[{vi}:v]{scale}"
+            
+            if sub_text:
+                # Split long text into 2 lines at natural break point
+                text = sub_text
+                mid = len(text) // 2
+                for sep in ["，", ",", " ", "。", "！"]:
+                    idx = text.find(sep, mid - 5)
+                    if 15 < idx < len(text) - 5:
+                        mid = idx + 1
+                        break
+                line1 = text[:mid].strip()
+                line2 = text[mid:].strip() if mid < len(text) else ""
 
-        result = await _run_ffmpeg(cmd, output_path)
+                if line2:
+                    vf += (
+                        f",drawtext=text='{line1}':fontcolor=white:fontsize=32:"
+                        "box=1:boxcolor=black@0.5:boxborderw=6:"
+                        "x=(w-text_w)/2:y=h-th-80,"
+                        f"drawtext=text='{line2}':fontcolor=white:fontsize=32:"
+                        "box=1:boxcolor=black@0.5:boxborderw=6:"
+                        "x=(w-text_w)/2:y=h-th-30"
+                    )
+                else:
+                    vf += (
+                        f",drawtext=text='{line1}':fontcolor=white:fontsize=32:"
+                        "box=1:boxcolor=black@0.5:boxborderw=6:"
+                        "x=(w-text_w)/2:y=h-th-55"
+                    )
 
-        # Cleanup
-        if os.path.exists(concat_file):
-            os.remove(concat_file)
+            filter_parts.append(f"{vf}[v{vi}]")
 
-        return result
+            # Audio input
+            audio_path = c.get("audio_path", "")
+            if audio_path and os.path.exists(audio_path):
+                ai = len([x for x in cmd if x == "-i"])
+                cmd.extend(["-i", audio_path])
+                a_indices.append(ai)
+                filter_parts.append(
+                    f"[{ai}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{ai}]"
+                )
+                has_audio = True
+            else:
+                # Generate silent audio for this clip
+                dur = c.get("duration", 5)
+                filter_parts.append(f"anullsrc=r=44100:cl=stereo:d={dur}[anull{vi}]")
+                a_indices.append(vi)  # virtual index for silent audio
+
+        n = len(v_indices)
+
+        # Concat video
+        v_concat = "".join(f"[v{vi}]" for vi in v_indices)
+        filter_parts.append(f"{v_concat}concat=n={n}:v=1:a=0[vout]")
+
+        # Concat audio
+        if has_audio:
+            a_labels = [f"[a{ai}]" for ai in a_indices]
+        else:
+            a_labels = [f"[anull{vi}]" for vi in v_indices]
+        a_concat = "".join(a_labels)
+        filter_parts.append(f"{a_concat}concat=n={n}:v=0:a=1[aout]")
+
+        cmd.extend(["-filter_complex", ";".join(filter_parts)])
+        cmd.extend(["-map", "[vout]", "-map", "[aout]"])
+        cmd.extend(["-c:v", "libx264", "-preset", "fast", "-crf", "23"])
+        cmd.extend(["-c:a", "aac", "-b:a", "128k"])
+        cmd.extend(["-shortest", "-movflags", "+faststart", output_path])
+
+        return await _run_ffmpeg(cmd, output_path)
 
     except Exception as e:
-        if os.path.exists(concat_file):
-            os.remove(concat_file)
         return {"ok": False, "error": str(e)}
 
 
