@@ -99,7 +99,7 @@ async def generate_shot_plan(topic: str, shot_count: int, shot_duration: str) ->
         return _template_fallback(topic, shot_count, shot_duration)
 
     base_url = LLM_BASE_URLS.get(service, LLM_BASE_URLS["openai"])
-    model = _model_for(service)
+    model = await get_setting("llm_model") or _model_for(service)
 
     user_prompt = f"视频主题：{topic}\n分镜数量：{shot_count}个\n每镜时长：{shot_duration}秒"
 
