@@ -4,6 +4,7 @@ from sqlalchemy import select
 from ..database import get_db
 from ..models import Setting
 from ..schemas.schemas import SettingOut, SettingUpdate
+from ..config import clear_setting_cache
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -30,4 +31,5 @@ async def upsert_setting(key: str, req: SettingUpdate, db: AsyncSession = Depend
         s = Setting(key=key, value=req.value)
         db.add(s)
     await db.commit()
+    clear_setting_cache()
     return {"ok": True, "key": key}

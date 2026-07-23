@@ -26,7 +26,25 @@ export const accountsApi = {
 export const mediaApi = {
   list: () => request('/media'),
   delete: (id) => request('/media/' + id, { method: 'DELETE' }),
-  generate: (prompt, size, duration, resolution) => request('/media/generate', { method: 'POST', body: JSON.stringify({ prompt, size, duration, resolution }) }),
+  generateShots: (topic, shotCount, shotDuration) => request('/media/generate-shots', {
+    method: 'POST',
+    body: JSON.stringify({ topic, shot_count: shotCount, shot_duration: shotDuration }),
+  }),
+  getShots: (mediaId) => request('/media/' + mediaId + '/shots'),
+  generate: (prompt, size, resolution, shots) => request('/media/generate', {
+    method: 'POST',
+    body: JSON.stringify({ prompt, size, resolution, shots }),
+  }),
+  upload: async (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await fetch(`${BASE}/media/upload`, { method: 'POST', body: formData })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new Error(err.detail || 'Upload failed')
+    }
+    return res.json()
+  },
 }
 
 export const publishApi = {

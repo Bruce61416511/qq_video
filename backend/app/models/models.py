@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Text, Enum, func
+from sqlalchemy import Column, Integer, String, DateTime, Text, Enum, func, ForeignKey
 from ..database import Base
 import enum
 
@@ -43,6 +43,18 @@ class Media(Base):
     video_duration = Column(String(20), default="")
     video_resolution = Column(String(10), default="")
     created_at = Column(DateTime, default=datetime.datetime.now)
+
+class MediaShot(Base):
+    __tablename__ = "media_shots"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    media_id = Column(Integer, nullable=False, index=True)
+    shot_index = Column(Integer, nullable=False)
+    scene_prompt = Column(Text, default="")
+    voice_script = Column(Text, default="")
+    duration = Column(String(10), default="5")
+    clip_path = Column(String(500), default="")
+    audio_path = Column(String(500), default="")
+    status = Column(String(20), default="pending")
 
 class PublishTask(Base):
     __tablename__ = "publish_tasks"

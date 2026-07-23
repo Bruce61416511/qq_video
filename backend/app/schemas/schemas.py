@@ -26,6 +26,18 @@ class MediaOut(BaseModel):
     created_at: datetime
     model_config = {"from_attributes": True}
 
+class MediaShotOut(BaseModel):
+    id: int
+    media_id: int
+    shot_index: int
+    scene_prompt: str
+    voice_script: str
+    duration: str
+    clip_path: str
+    audio_path: str
+    status: str
+    model_config = {"from_attributes": True}
+
 class PublishTaskOut(BaseModel):
     id: int
     media_id: int
@@ -45,11 +57,21 @@ class PublishRequest(BaseModel):
     tags: str = ""
     schedule_time: Optional[datetime] = None
 
+class ShotItem(BaseModel):
+    scene_prompt: str
+    voice_script: str
+    duration: str = "5"
+
+class GenerateShotsRequest(BaseModel):
+    topic: str
+    shot_count: int = 3
+    shot_duration: str = "5"
+
 class VideoGenerateRequest(BaseModel):
     prompt: str
     size: str = "9:16"
-    duration: str = "10"
     resolution: str = "1080P"
+    shots: list[ShotItem] = []
 
 class SettingOut(BaseModel):
     id: int

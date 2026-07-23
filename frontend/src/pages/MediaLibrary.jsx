@@ -1,13 +1,48 @@
 ﻿import { useState, useEffect } from 'react'
-import { Table, Button, Tag, Space, Upload, Popconfirm, App } from 'antd'
+import { Table, Button, Tag, Space, Upload, Popconfirm, App, Progress } from 'antd'
 import { UploadOutlined, SendOutlined, DeleteOutlined, CheckCircleOutlined, LoadingOutlined, CloseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons'
 import PublishModal from '../components/PublishModal'
 import { mediaApi } from '../services/api'
+
+const SHOT_STATUS = { pending: '等待中', generating: '生成中...', done: '已完成', failed: '失败' }
+const SHOT_COLORS = { pending: 'default', generating: 'processing', done: 'success', failed: 'error' }
 
 const statusMap = {
   ready: { color: 'success', icon: <CheckCircleOutlined />, text: '就绪' },
   generating: { color: 'processing', icon: <LoadingOutlined />, text: '生成中' },
   failed: { color: 'error', icon: <CloseCircleOutlined />, text: '失败' },
+}
+
+function ShotProgress({ mediaId }) {
+  const [shots, setShots] = useState([])
+  useEffect(() => {
+    let timer
+    const poll = async () => {
+      try {
+        const data = await mediaApi.getShots(mediaId)
+        setShots(data || [])
+      } catch (e) { /* ignore */ }
+    }
+    poll()
+    timer = setInterval(poll, 3000)
+    return () => clearInterval(timer)
+  }, [mediaId])
+
+  if (!shots.length) return <span style={{ color: '#8c8c8c' }}>暂无分镜数据</span>
+  const done = shots.filter(s => s.status === 'done').length
+
+  return (
+    <div style={{ padding: '8px 0' }}>
+      <Progress percent={Math.round((done / shots.length) * 100)} size="small" format={() => `${done}/${shots.length}`} style={{ marginBottom: 12, maxWidth: 200 }} />
+      {shots.map(s => (
+        <div key={s.shot_index} style={{ marginBottom: 6, fontSize: 13 }}>
+          <Tag color={SHOT_COLORS[s.status]} style={{ marginRight: 8 }}>镜{s.shot_index}</Tag>
+          <span>{SHOT_STATUS[s.status]}</span>
+          <span style={{ color: '#8c8c8c', marginLeft: 12 }}>{s.scene_prompt?.substring(0, 50)}...</span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export default function MediaLibrary() {
@@ -125,6 +160,10 @@ export default function MediaLibrary() {
           selectedRowKeys: selected,
           onChange: setSelected,
           getCheckboxProps: (r) => ({ disabled: r.status !== 'ready' }),
+        }}
+        expandable={{
+          rowExpandable: (r) => r.source === 'ai',
+          expandedRowRender: (r) => <ShotProgress mediaId={r.id} />,
         }}
       />
 
