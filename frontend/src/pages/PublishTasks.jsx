@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from 'react'
-import { Table, Tag, Space, App } from 'antd'
-import { CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import { Table, Tag, Space, App, Button, Popconfirm } from 'antd'
+import { CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined, ClockCircleOutlined, DeleteOutlined } from '@ant-design/icons'
 import { publishApi, accountsApi, mediaApi } from '../services/api'
 
 const statusMap = {
@@ -46,13 +46,22 @@ export default function PublishTasks() {
 
   useEffect(() => { loadData() }, [])
 
-  // Auto-refresh every 5s if there are pending/running tasks
   useEffect(() => {
     const hasActive = tasks.some(t => t.status === 'pending' || t.status === 'running')
     if (!hasActive) return
     const timer = setInterval(loadData, 5000)
     return () => clearInterval(timer)
   }, [tasks])
+
+  const clearAll = async () => {
+    try {
+      await publishApi.clearAll()
+      message.success('已清除所有发布记录')
+      loadData()
+    } catch (e) {
+      message.error('清除失败: ' + e.message)
+    }
+  }
 
   const columns = [
     { title: '#', dataIndex: 'id', key: 'id', width: 60 },
@@ -89,15 +98,25 @@ export default function PublishTasks() {
 
   return (
     <div>
-      <div style={{ marginBottom: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>发布记录</h2>
-        <Space style={{ marginTop: 4 }}>
-          <span style={{ fontSize: 13, color: '#8c8c8c' }}>
-            共 {tasks.length} 条 · 成功 {successCount} · 失败 {failCount}
-          </span>
-          {activeCount > 0 && (
-            <Tag icon={<LoadingOutlined spin />} color="processing">进行中 {activeCount}</Tag>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>发布记录</h2>
+          <Space style={{ marginTop: 4 }}>
+            <span style={{ fontSize: 13, color: '#8c8c8c' }}>
+              共 {tasks.length} 条 · 成功 {successCount} · 失败 {failCount}
+            </span>
+            {activeCount > 0 && (
+              <Tag icon={<LoadingOutlined spin />} color="processing">进行中 {activeCount}</Tag>
+            )}
+          </Space>
+        </div>
+        <Space>
+          {tasks.length > 0 && (
+            <Popconfirm title="确定清除所有发布记录？" onConfirm={clearAll} okText="确定" cancelText="取消">
+              <Button danger icon={<DeleteOutlined />}>清除所有记录</Button>
+            </Popconfirm>
           )}
+          <a onClick={loadData} style={{ fontSize: 13, cursor: 'pointer', lineHeight: '32px' }}>刷新</a>
         </Space>
       </div>
 
@@ -109,10 +128,6 @@ export default function PublishTasks() {
         loading={loading}
         size="middle"
       />
-
-      <div style={{ marginTop: 12 }}>
-        <a onClick={loadData} style={{ fontSize: 13, cursor: 'pointer' }}>刷新</a>
-      </div>
     </div>
   )
 }

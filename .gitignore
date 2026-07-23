@@ -1,0 +1,13 @@
+﻿node_modules/
+dist/
+__pycache__/
+*.pyc
+*.db
+cookies/
+uploads/
+matrix_ref/
+matrix_repo/
+*.mp4
+*.png
+*.jpg
+.env

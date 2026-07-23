@@ -1,4 +1,4 @@
-﻿import datetime
+import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Text, Enum, func
 from ..database import Base
 import enum
@@ -27,7 +27,7 @@ class Account(Base):
     cookies = Column(Text, nullable=True)
     last_login = Column(String(50), default="")
     channel_name = Column(String(100), default="")
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=datetime.datetime.now)
 
 class Media(Base):
     __tablename__ = "media"
@@ -39,7 +39,7 @@ class Media(Base):
     status = Column(Enum(MediaStatus), default=MediaStatus.ready)
     source = Column(String(20), default="upload")
     prompt = Column(Text, default="")
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=datetime.datetime.now)
 
 class PublishTask(Base):
     __tablename__ = "publish_tasks"
@@ -50,5 +50,5 @@ class PublishTask(Base):
     tags = Column(String(500), default="")
     status = Column(Enum(TaskStatus), default=TaskStatus.pending)
     error_msg = Column(Text, default="")
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=datetime.datetime.now)
     finished_at = Column(DateTime, nullable=True)

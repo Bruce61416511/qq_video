@@ -5,7 +5,7 @@ from ..database import get_db
 from ..models import Account, AccountStatus
 from ..schemas.schemas import AccountOut
 from ..config import MAX_ACCOUNTS
-from ..services.qrcode_service import start_qr_login, check_login_status, finish_login, validate_cookies, pseudo_finish, pseudo_status, pseudo_validate
+from ..services.qrcode_service import start_qr_login, check_login_status, finish_login, validate_cookies, check_cookies_visible, pseudo_finish, pseudo_status, pseudo_validate
 import datetime
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
@@ -17,7 +17,6 @@ async def list_accounts(db: AsyncSession = Depends(get_db)):
 
 @router.post("/check-all")
 async def check_all_accounts(db: AsyncSession = Depends(get_db)):
-    """Check all online accounts, mark expired ones."""
     result = await db.execute(select(Account).where(Account.status == AccountStatus.online))
     online_accounts = result.scalars().all()
     expired = []
@@ -93,11 +92,8 @@ async def check_account_valid(account_id: int, db: AsyncSession = Depends(get_db
     acc = await db.get(Account, account_id)
     if not acc:
         raise HTTPException(404, "账号不存在")
-    try:
-        valid = await validate_cookies(account_id)
-    except Exception:
-        valid = await pseudo_validate(account_id)
-    if not valid and acc.status == AccountStatus.online:
+    result = await check_cookies_visible(account_id)
+    if not result["valid"] and acc.status == AccountStatus.online:
         acc.status = AccountStatus.expired
         await db.commit()
-    return {"account_id": account_id, "valid": valid, "status": acc.status.value}
+    return {"account_id": account_id, "valid": result["valid"], "status": acc.status.value, "nickname": result.get("nickname", "")}

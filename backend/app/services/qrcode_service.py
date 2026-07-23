@@ -22,7 +22,6 @@ async def start_qr_login(account_id: int):
     context = await browser.new_context()
     page = await context.new_page()
 
-    # Matrix approach: login-for-iframe
     await page.goto(
         "https://channels.weixin.qq.com/platform/login-for-iframe?dark_mode=true&host_type=1",
         wait_until="networkidle"
@@ -39,14 +38,12 @@ async def start_qr_login(account_id: int):
     return {"qr_image": "", "status": "scan_in_browser"}
 
 async def _wait_login(account_id: int):
-    """Copy from Matrix: poll .mask class -> wait 6s -> open new page to /platform -> save cookies."""
     session = _active_logins.get(account_id)
     if not session: return
     page = session["page"]
     context = session["context"]
 
     try:
-        # Step 1: poll .mask class for "show" (scanned) - max 13*3=39s
         print(f"[QR #{account_id}] Polling .mask for scan...")
         success_mask = page.locator(".mask").first
         num = 0
@@ -66,29 +63,33 @@ async def _wait_login(account_id: int):
                 print(f"[QR #{account_id}] Timeout: scan not detected")
                 return
 
-        # Step 2: wait 6s for user to confirm on phone
         print(f"[QR #{account_id}] Waiting 6s for confirm...")
         await asyncio.sleep(6)
 
-        # Step 3: check cookies, open new page to /platform
         print(f"[QR #{account_id}] Opening platform page...")
         platform_page = await context.new_page()
-        await platform_page.goto(
-            "https://channels.weixin.qq.com/platform",
-            wait_until="networkidle"
-        )
-        await platform_page.wait_for_url("https://channels.weixin.qq.com/platform", timeout=10000)
-
-        # Step 4: get user info
         try:
-            third_id = await platform_page.locator("span.finder-uniq-id").first.inner_text()
-            nickname = await platform_page.locator("h2.finder-nickname").first.inner_text()
-            session["nickname"] = nickname
-            print(f"[QR #{account_id}] Logged in: {nickname} ({third_id})")
-        except Exception as e:
-            print(f"[QR #{account_id}] User info failed: {e}")
+            await platform_page.goto(
+                "https://channels.weixin.qq.com/platform",
+                wait_until="load",
+                timeout=15000
+            )
+        except:
+            pass
 
-        # Step 5: save cookies
+        await asyncio.sleep(3)
+
+        try:
+            nickname = ""
+            try:
+                nickname = await platform_page.locator("h2.finder-nickname").first.inner_text(timeout=5000)
+            except:
+                pass
+            session["nickname"] = nickname
+            print(f"[QR #{account_id}] Nickname: {nickname}")
+        except:
+            pass
+
         cookie_file = _cookie_path(account_id)
         await context.storage_state(path=cookie_file)
         await platform_page.close()
@@ -130,6 +131,32 @@ async def validate_cookies(account_id: int):
         return len(data.get("cookies", [])) > 0
     except:
         return False
+
+async def check_cookies_visible(account_id: int):
+    cf = _cookie_path(account_id)
+    if not os.path.exists(cf):
+        return {"valid": False, "message": "无登录信息"}
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=False)
+            context = await browser.new_context(storage_state=cf)
+            page = await context.new_page()
+            await page.goto("https://channels.weixin.qq.com/platform", timeout=10000)
+            await asyncio.sleep(3)
+            url = page.url
+            nickname = ""
+            if "/login" not in url:
+                try:
+                    nickname = await page.locator("h2.finder-nickname").first.inner_text(timeout=3000)
+                except:
+                    pass
+                await context.storage_state(path=cf)
+            await context.close()
+            await browser.close()
+            valid = "/login" not in url
+            return {"valid": valid, "nickname": nickname, "message": "有效" if valid else "已过期"}
+    except Exception as e:
+        return {"valid": False, "message": str(e)}
 
 def pseudo_status(): return {"status": "waiting"}
 def pseudo_finish(account_id: int): return {"ok": True, "cookies": f"pseudo_{account_id}"}

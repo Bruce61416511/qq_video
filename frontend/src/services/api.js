@@ -20,6 +20,7 @@ export const accountsApi = {
   qrcodeStatus: (id) => request('/accounts/' + id + '/qrcode/status'),
   bind: (id) => request('/accounts/' + id + '/bind', { method: 'POST' }),
   checkAll: () => request('/accounts/check-all', { method: 'POST' }),
+  validate: (id) => request('/accounts/' + id + '/validate', { method: 'POST' }),
 }
 
 export const mediaApi = {
@@ -31,4 +32,5 @@ export const mediaApi = {
 export const publishApi = {
   create: (data) => request('/publish', { method: 'POST', body: JSON.stringify(data) }),
   tasks: () => request('/publish/tasks'),
+  clearAll: () => request('/publish/tasks', { method: 'DELETE' }),
 }

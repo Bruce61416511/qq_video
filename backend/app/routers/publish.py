@@ -1,6 +1,6 @@
 ﻿from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from ..database import get_db
 from ..models import PublishTask, Media, Account, AccountStatus, MediaStatus, TaskStatus
 from ..schemas.schemas import PublishTaskOut, PublishRequest
@@ -10,9 +10,15 @@ router = APIRouter(prefix="/api/publish", tags=["publish"])
 @router.get("/tasks", response_model=list[PublishTaskOut])
 async def list_tasks(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(PublishTask).order_by(PublishTask.created_at.desc()).limit(50)
+        select(PublishTask).order_by(PublishTask.created_at.desc()).limit(200)
     )
     return result.scalars().all()
+
+@router.delete("/tasks")
+async def clear_tasks(db: AsyncSession = Depends(get_db)):
+    await db.execute(delete(PublishTask))
+    await db.commit()
+    return {"ok": True, "message": "所有发布记录已清除"}
 
 @router.post("")
 async def create_publish(req: PublishRequest, db: AsyncSession = Depends(get_db)):
