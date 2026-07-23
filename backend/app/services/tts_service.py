@@ -33,6 +33,11 @@ async def generate_voice(text: str, voice_id: str = None, output_path: str = Non
     if not service or service == "edge_tts" or (service == "edge_tts" and not api_key):
         return await _edge_tts(text, output_path, voice_id)
 
+    if service == "bailian_tts":
+        model = await get_setting("tts_model") or "qwen-audio-3.0-tts-flash"
+        voice = await get_setting("tts_voice") or "longanhuan_v3.6"
+        return await _bailian_tts(text, output_path, api_key, model, voice)
+
     if service == "openai_tts":
         return await _openai_tts(text, output_path, api_key, voice_id)
 
@@ -77,6 +82,31 @@ async def _edge_tts(text: str, output_path: str, voice_id: str = None) -> str:
         print(f"[TTS] error: {e}")
         return ""
 
+
+
+async def _bailian_tts(text: str, output_path: str, api_key: str, model: str = "qwen-audio-3.0-tts-flash", voice: str = "longanhuan_v3.6") -> str:
+    """Aliyun Bailian TTS via dashscope SDK. Model: qwen-audio-3.0-tts-flash"""
+    try:
+        import dashscope
+        from dashscope.audio.tts_v2 import SpeechSynthesizer
+        
+        dashscope.api_key = api_key
+        synthesizer = SpeechSynthesizer(
+            model=model,
+            voice=voice,
+        )
+        audio = synthesizer.call(text)
+        
+        if audio and len(audio) > 100:
+            with open(output_path, "wb") as f:
+                f.write(audio)
+            return output_path
+        else:
+            print(f"[TTS] Bailian: empty audio response")
+    except Exception as e:
+        print(f"[TTS] Bailian error: {e}")
+    
+    return ""
 
 async def _openai_tts(text: str, output_path: str, api_key: str, voice_id: str = None) -> str:
     """OpenAI TTS API."""

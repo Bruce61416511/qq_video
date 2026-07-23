@@ -8,14 +8,45 @@ import { settingsApi } from '../services/api'
 
 const SETTING_KEYS = {
   llm_service: { label: 'LLM 服务', section: 'llm' },
+  llm_model: { label: 'LLM 模型', section: 'llm' },
   llm_api_key: { label: 'LLM API Key', section: 'llm' },
   llm_api_secret: { label: 'LLM API Secret', section: 'llm' },
   tts_service: { label: 'TTS 服务', section: 'tts' },
+  tts_model: { label: 'TTS 模型', section: 'tts' },
+  tts_voice: { label: 'TTS 音色', section: 'tts' },
   tts_api_key: { label: 'TTS API Key', section: 'tts' },
   video_service: { label: '视频生成服务', section: 'video' },
+  video_model: { label: '视频模型', section: 'video' },
   video_api_key: { label: '视频 API Key', section: 'video' },
   video_api_secret: { label: '视频 API Secret', section: 'video' },
 }
+
+
+const TTS_MODEL_OPTIONS = [
+  { value: 'qwen-audio-3.0-tts-flash', label: 'qwen-audio-3.0-tts-flash (推荐)' },
+  { value: 'qwen-audio-3.0-tts-plus', label: 'qwen-audio-3.0-tts-plus' },
+]
+
+const TTS_VOICE_OPTIONS = [
+  { value: 'longanhuan_v3.6', label: '龙安欢 v3.6 (温柔女声·推荐)' },
+  { value: 'longxiaochun', label: '龙小春 (知性女声)' },
+  { value: 'longxiaoxia', label: '龙小夏 (活泼女声)' },
+  { value: 'longyichen', label: '龙一辰 (沉稳男声)' },
+]
+
+const LLM_MODEL_OPTIONS = [
+  { value: 'gpt-4o', label: 'gpt-4o' },
+  { value: 'deepseek-chat', label: 'deepseek-chat' },
+  { value: 'qwen-plus', label: 'qwen-plus' },
+  { value: 'glm-4', label: 'glm-4' },
+  { value: 'moonshot-v1-8k', label: 'moonshot-v1-8k' },
+]
+
+const VIDEO_MODEL_OPTIONS = [
+  { value: 'wanx2.1-t2v-plus', label: 'wanx2.1-t2v-plus (推荐)' },
+  { value: 'kling-v1', label: 'kling-v1' },
+  { value: 'kling-v1-5', label: 'kling-v1-5' },
+]
 
 const LLM_OPTIONS = [
   { value: 'openai', label: 'OpenAI (GPT-4o)' },
@@ -26,8 +57,9 @@ const LLM_OPTIONS = [
 ]
 
 const TTS_OPTIONS = [
+  { value: 'bailian_tts', label: '阿里云百炼 CosyVoice' },
+  { value: 'edge_tts', label: 'Edge TTS (免费·海外可用)' },
   { value: 'openai_tts', label: 'OpenAI TTS' },
-  { value: 'edge_tts', label: 'Edge TTS (免费)' },
   { value: 'chattss', label: 'ChatTTS' },
   { value: 'fish_audio', label: 'Fish Audio' },
 ]
@@ -61,6 +93,36 @@ function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, service
           options={serviceOptions}
         />
       </div>
+
+      {(title === 'TTS 语音合成' || title === 'LLM 分镜策划' || title === '视频生成') && (
+        <div style={{ marginBottom: 14 }}>
+          <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>模型</span>
+          <Select
+            style={{ width: '100%' }}
+            value={config[serviceKey.replace('_service', '_model')]?.value || undefined}
+            placeholder="选择模型"
+            onChange={v => setConfig(prev => ({ ...prev, [serviceKey.replace('_service', '_model')]: { ...prev[serviceKey.replace('_service', '_model')], value: v } }))}
+            options={
+              title === 'LLM 分镜策划' ? LLM_MODEL_OPTIONS :
+              title === 'TTS 语音合成' ? TTS_MODEL_OPTIONS :
+              VIDEO_MODEL_OPTIONS
+            }
+          />
+        </div>
+      )}
+
+      {title === 'TTS 语音合成' && (
+        <div style={{ marginBottom: 14 }}>
+          <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>音色</span>
+          <Select
+            style={{ width: '100%' }}
+            value={config['tts_voice']?.value || undefined}
+            placeholder="选择音色"
+            onChange={v => setConfig(prev => ({ ...prev, tts_voice: { ...prev['tts_voice'], value: v } }))}
+            options={TTS_VOICE_OPTIONS}
+          />
+        </div>
+      )}
 
       <div style={{ marginBottom: 14 }}>
         <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>API Key</span>
