@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import random
 import traceback
 from datetime import datetime
@@ -13,7 +13,24 @@ except Exception:
     HAS_PLAYWRIGHT = False
 
 async def run_worker():
-    print(f"[Worker] 发布队列已启动 {'(Playwright 模式)' if HAS_PLAYWRIGHT else '(模拟模式 - 仅记录日志)'}")
+    mode = 'Playwright' if HAS_PLAYWRIGHT else 'sim'
+    print(f"[Worker] publish queue started ({mode})")
+
+    # recover stuck running tasks (older than 10 min -> back to pending)
+    async with async_session() as db:
+        result = await db.execute(
+            select(PublishTask).where(PublishTask.status == TaskStatus.running)
+        )
+        stuck = result.scalars().all()
+        recovered = 0
+        for t in stuck:
+            if t.created_at and (datetime.now() - t.created_at).total_seconds() > 600:
+                t.status = TaskStatus.pending
+                t.error_msg = ''
+                recovered += 1
+        await db.commit()
+        if recovered:
+            print(f"[Worker] recovered {recovered} stuck task(s)")
 
     while True:
         try:
@@ -39,13 +56,13 @@ async def run_worker():
 
                 if not media or not account:
                     task.status = TaskStatus.failed
-                    task.error_msg = "素材或账号不存在"
+                    task.error_msg = "media or account not found"
                     task.finished_at = datetime.now()
                     await db.commit()
                     continue
 
                 if HAS_PLAYWRIGHT:
-                    print(f"[Worker] 发布: 账号={account.name} 视频={media.name}")
+                    print(f"[Worker] publish: account={account.name} video={media.name}")
                     result = await publish_video(
                         account_id=task.account_id,
                         video_path=media.filepath,
@@ -57,29 +74,28 @@ async def run_worker():
                         task.status = TaskStatus.success
                     else:
                         task.status = TaskStatus.failed
-                        task.error_msg = result.get("error", "未知错误")
-                        # If login expired, update account status
-                        if "登录" in task.error_msg:
+                        task.error_msg = result.get("error", "unknown error")
+                        if "login" in task.error_msg.lower():
                             account.status = AccountStatus.expired
                 else:
-                    print(f"[Worker] 模拟发布: 账号={account.name} 视频={media.name}")
+                    print(f"[Worker] mock publish: account={account.name} video={media.name}")
                     await asyncio.sleep(2)
                     task.status = TaskStatus.success
                     task.error_msg = ""
 
                 task.finished_at = datetime.now()
                 await db.commit()
-                print(f"[Worker] 完成: {'成功' if task.status == TaskStatus.success else '失败'}")
+                print(f"[Worker] done: {'OK' if task.status == TaskStatus.success else 'FAIL'}")
 
                 await db.close()
 
-                delay = random.randint(10, 30) if not HAS_PLAYWRIGHT else random.randint(300, 900)
+                delay = random.randint(10, 30) if not HAS_PLAYWRIGHT else 30
                 if task.status == TaskStatus.pending or task.status == TaskStatus.running:
                     delay = 5
                 await asyncio.sleep(delay)
 
         except Exception as e:
-            print(f"[Worker] 错误: {traceback.format_exc()}")
+            print(f"[Worker] error: {traceback.format_exc()}")
             await asyncio.sleep(10)
 
 async def start_worker():

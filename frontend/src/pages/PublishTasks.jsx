@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from 'react'
 import { Table, Tag, Space, App, Button, Popconfirm } from 'antd'
-import { CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined, ClockCircleOutlined, DeleteOutlined } from '@ant-design/icons'
+import { CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined, ClockCircleOutlined, DeleteOutlined, StopOutlined } from '@ant-design/icons'
 import { publishApi, accountsApi, mediaApi } from '../services/api'
 
 const statusMap = {
@@ -63,6 +63,16 @@ export default function PublishTasks() {
     }
   }
 
+  const cancelTask = async (id) => {
+    try {
+      await publishApi.cancel(id)
+      message.success('已取消发布')
+      loadData()
+    } catch (e) {
+      message.error('取消失败: ' + e.message)
+    }
+  }
+
   const columns = [
     { title: '#', dataIndex: 'id', key: 'id', width: 60 },
     {
@@ -76,10 +86,19 @@ export default function PublishTasks() {
     },
     { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true },
     {
-      title: '状态', dataIndex: 'status', key: 'status', width: 100,
-      render: (s) => {
+      title: '状态', dataIndex: 'status', key: 'status', width: 120,
+      render: (s, record) => {
         const m = statusMap[s] || statusMap.pending
-        return <Tag icon={m.icon} color={m.color}>{m.text}</Tag>
+        return (
+          <Space size={4}>
+            <Tag icon={m.icon} color={m.color}>{m.text}</Tag>
+            {s === 'running' && (
+              <Popconfirm title="确定取消发布？" onConfirm={() => cancelTask(record.id)} okText="确定" cancelText="取消">
+                <Button size="small" danger icon={<StopOutlined />} type="link" style={{ padding: 0, height: 20 }} />
+              </Popconfirm>
+            )}
+          </Space>
+        )
       },
     },
     {

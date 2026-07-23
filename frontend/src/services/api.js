@@ -33,4 +33,5 @@ export const publishApi = {
   create: (data) => request('/publish', { method: 'POST', body: JSON.stringify(data) }),
   tasks: () => request('/publish/tasks'),
   clearAll: () => request('/publish/tasks', { method: 'DELETE' }),
+  cancel: (id) => request('/publish/tasks/' + id + '/cancel', { method: 'POST' }),
 }

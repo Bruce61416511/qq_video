@@ -1,6 +1,7 @@
 ﻿from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
+from datetime import datetime
 from ..database import get_db
 from ..models import PublishTask, Media, Account, AccountStatus, MediaStatus, TaskStatus
 from ..schemas.schemas import PublishTaskOut, PublishRequest
@@ -19,6 +20,19 @@ async def clear_tasks(db: AsyncSession = Depends(get_db)):
     await db.execute(delete(PublishTask))
     await db.commit()
     return {"ok": True, "message": "所有发布记录已清除"}
+
+@router.post("/tasks/{task_id}/cancel")
+async def cancel_task(task_id: int, db: AsyncSession = Depends(get_db)):
+    task = await db.get(PublishTask, task_id)
+    if not task:
+        raise HTTPException(404, "任务不存在")
+    if task.status != TaskStatus.running:
+        raise HTTPException(400, "只能取消正在运行的任务")
+    task.status = TaskStatus.failed
+    task.error_msg = "用户取消"
+    task.finished_at = datetime.now()
+    await db.commit()
+    return {"ok": True}
 
 @router.post("")
 async def create_publish(req: PublishRequest, db: AsyncSession = Depends(get_db)):
