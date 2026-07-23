@@ -1,4 +1,4 @@
-﻿from pydantic import BaseModel
+from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
 
@@ -20,6 +20,9 @@ class MediaOut(BaseModel):
     status: str
     source: str
     prompt: str = ''
+    video_size: str = ''
+    video_duration: str = ''
+    video_resolution: str = ''
     created_at: datetime
     model_config = {"from_attributes": True}
 
@@ -44,3 +47,16 @@ class PublishRequest(BaseModel):
 
 class VideoGenerateRequest(BaseModel):
     prompt: str
+    size: str = "9:16"
+    duration: str = "10"
+    resolution: str = "1080P"
+
+class SettingOut(BaseModel):
+    id: int
+    key: str
+    value: str
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+class SettingUpdate(BaseModel):
+    value: str

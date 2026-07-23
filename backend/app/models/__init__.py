@@ -1,1 +1,1 @@
-﻿from .models import Account, Media, PublishTask, AccountStatus, MediaStatus, TaskStatus
+from .models import Account, Media, PublishTask, Setting, AccountStatus, MediaStatus, TaskStatus

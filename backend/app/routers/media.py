@@ -1,4 +1,4 @@
-﻿import os
+import os
 import uuid
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,12 +14,11 @@ router = APIRouter(prefix="/api/media", tags=["media"])
 async def list_media(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Media).order_by(Media.created_at.desc()))
     media_list = result.scalars().all()
-    # Check if files actually exist, mark as failed if not
     changed = False
     for m in media_list:
         if m.status == MediaStatus.ready and not os.path.exists(m.filepath):
             m.status = MediaStatus.failed
-            m.duration = "文件丢失"
+            m.duration = "file missing"
             changed = True
     if changed:
         await db.commit()
@@ -51,7 +50,7 @@ async def upload_video(file: UploadFile = File(...), db: AsyncSession = Depends(
 async def delete_media(media_id: int, db: AsyncSession = Depends(get_db)):
     m = await db.get(Media, media_id)
     if not m:
-        raise HTTPException(404, "素材不存在")
+        raise HTTPException(404, "media not found")
     if os.path.exists(m.filepath):
         os.remove(m.filepath)
     await db.delete(m)
@@ -60,14 +59,19 @@ async def delete_media(media_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/generate", response_model=MediaOut)
 async def generate_video(req: VideoGenerateRequest, db: AsyncSession = Depends(get_db)):
+    prompt_short = req.prompt[:30] if len(req.prompt) > 30 else req.prompt
+    filename = f"ai_{uuid.uuid4().hex}.mp4"
     media = Media(
-        name=f"{req.prompt[:30]}...mp4",
-        filepath=str(UPLOAD_DIR / f"gen_{uuid.uuid4().hex}.mp4"),
+        name=f"{prompt_short}.mp4",
+        filepath=str(UPLOAD_DIR / filename),
         size="-",
-        duration="-",
+        duration=f"{req.duration}s",
         status=MediaStatus.generating,
         source="ai",
         prompt=req.prompt,
+        video_size=req.size,
+        video_duration=req.duration,
+        video_resolution=req.resolution,
     )
     db.add(media)
     await db.commit()

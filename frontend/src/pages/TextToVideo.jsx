@@ -1,12 +1,33 @@
-﻿import { useState } from 'react'
-import { Input, Button, Alert, Card, App } from 'antd'
+import { useState } from 'react'
+import { Input, Button, Alert, Card, App, Select, Space } from 'antd'
 import { ThunderboltOutlined, LoadingOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import { mediaApi } from '../services/api'
 
 const { TextArea } = Input
 
+const SIZE_OPTIONS = [
+  { value: '9:16', label: '9:16 竖屏' },
+  { value: '16:9', label: '16:9 横屏' },
+  { value: '1:1', label: '1:1 方形' },
+]
+
+const DURATION_OPTIONS = [
+  { value: '5', label: '5秒' },
+  { value: '10', label: '10秒' },
+  { value: '15', label: '15秒' },
+  { value: '30', label: '30秒' },
+]
+
+const RESOLUTION_OPTIONS = [
+  { value: '720P', label: '720P' },
+  { value: '1080P', label: '1080P' },
+]
+
 export default function TextToVideo() {
   const [prompt, setPrompt] = useState('')
+  const [size, setSize] = useState('9:16')
+  const [duration, setDuration] = useState('10')
+  const [resolution, setResolution] = useState('1080P')
   const [generating, setGenerating] = useState(false)
   const [done, setDone] = useState(false)
   const [result, setResult] = useState(null)
@@ -16,7 +37,7 @@ export default function TextToVideo() {
     if (!prompt.trim()) { message.warning('请输入视频文案描述'); return }
     setGenerating(true); setDone(false); setResult(null)
     try {
-      const media = await mediaApi.generate(prompt.trim())
+      const media = await mediaApi.generate(prompt.trim(), size, duration, resolution)
       setResult(media)
       setDone(true)
       setPrompt('')
@@ -49,6 +70,21 @@ export default function TextToVideo() {
           />
         </div>
 
+        <Space size="large" style={{ marginBottom: 20 }} wrap>
+          <div>
+            <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>视频尺寸</span>
+            <Select value={size} onChange={setSize} options={SIZE_OPTIONS} style={{ width: 160 }} disabled={generating} />
+          </div>
+          <div>
+            <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>视频时长</span>
+            <Select value={duration} onChange={setDuration} options={DURATION_OPTIONS} style={{ width: 120 }} disabled={generating} />
+          </div>
+          <div>
+            <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>分辨率</span>
+            <Select value={resolution} onChange={setResolution} options={RESOLUTION_OPTIONS} style={{ width: 120 }} disabled={generating} />
+          </div>
+        </Space>
+
         <Button
           type="primary"
           size="large"
@@ -56,6 +92,7 @@ export default function TextToVideo() {
           onClick={handleGenerate}
           disabled={!prompt.trim() || generating}
           loading={generating}
+          block
         >
           {generating ? '提交中...' : '生成视频'}
         </Button>
@@ -74,7 +111,12 @@ export default function TextToVideo() {
               <div>
                 <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
                   <div style={{ width: 80, height: 50, background: '#f0f0f0', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#bfbfbf' }}>缩略图</div>
-                  <div><strong>{result.name}</strong><p style={{ margin: 0, color: '#8c8c8c', fontSize: 12 }}>状态: {result.status}</p></div>
+                  <div>
+                    <strong>{result.name}</strong>
+                    <p style={{ margin: 0, color: '#8c8c8c', fontSize: 12 }}>
+                      {result.video_size} | {result.video_resolution} | {result.video_duration}秒 | 状态: {result.status}
+                    </p>
+                  </div>
                 </div>
                 <a href="/media" style={{ display: 'inline-block', marginTop: 8, fontWeight: 500 }}>前往素材库查看进度 →</a>
               </div>

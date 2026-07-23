@@ -39,6 +39,9 @@ class Media(Base):
     status = Column(Enum(MediaStatus), default=MediaStatus.ready)
     source = Column(String(20), default="upload")
     prompt = Column(Text, default="")
+    video_size = Column(String(20), default="")
+    video_duration = Column(String(20), default="")
+    video_resolution = Column(String(10), default="")
     created_at = Column(DateTime, default=datetime.datetime.now)
 
 class PublishTask(Base):
@@ -52,3 +55,10 @@ class PublishTask(Base):
     error_msg = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.datetime.now)
     finished_at = Column(DateTime, nullable=True)
+
+class Setting(Base):
+    __tablename__ = "settings"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(100), unique=True, nullable=False)
+    value = Column(Text, default="")
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)

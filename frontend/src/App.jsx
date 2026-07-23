@@ -1,11 +1,12 @@
-﻿import { useRef } from 'react'
+import { useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import { Layout, Menu, theme } from 'antd'
-import { TeamOutlined, VideoCameraOutlined, ThunderboltOutlined, HistoryOutlined } from '@ant-design/icons'
+import { TeamOutlined, VideoCameraOutlined, ThunderboltOutlined, HistoryOutlined, SettingOutlined } from '@ant-design/icons'
 import Accounts from './pages/Accounts'
 import MediaLibrary from './pages/MediaLibrary'
 import TextToVideo from './pages/TextToVideo'
 import PublishTasks from './pages/PublishTasks'
+import Settings from './pages/Settings'
 
 const { Sider, Content } = Layout
 
@@ -14,6 +15,7 @@ const menuItems = [
   { key: '/media', icon: <VideoCameraOutlined />, label: '素材库' },
   { key: '/text-to-video', icon: <ThunderboltOutlined />, label: '文生视频' },
   { key: '/tasks', icon: <HistoryOutlined />, label: '发布记录' },
+  { key: '/settings', icon: <SettingOutlined />, label: '设置' },
 ]
 
 export default function App() {
@@ -50,6 +52,7 @@ export default function App() {
             <Route path="/media" element={<MediaLibrary />} />
             <Route path="/text-to-video" element={<TextToVideo />} />
             <Route path="/tasks" element={<PublishTasks />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </Content>
       </Layout>

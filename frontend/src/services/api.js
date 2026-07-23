@@ -1,4 +1,4 @@
-﻿const BASE = 'http://localhost:8001/api'
+const BASE = 'http://localhost:8001/api'
 
 async function request(url, options = {}) {
   const res = await fetch(`${BASE}${url}`, {
@@ -26,7 +26,7 @@ export const accountsApi = {
 export const mediaApi = {
   list: () => request('/media'),
   delete: (id) => request('/media/' + id, { method: 'DELETE' }),
-  generate: (prompt) => request('/media/generate', { method: 'POST', body: JSON.stringify({ prompt }) }),
+  generate: (prompt, size, duration, resolution) => request('/media/generate', { method: 'POST', body: JSON.stringify({ prompt, size, duration, resolution }) }),
 }
 
 export const publishApi = {
@@ -34,4 +34,10 @@ export const publishApi = {
   tasks: () => request('/publish/tasks'),
   clearAll: () => request('/publish/tasks', { method: 'DELETE' }),
   cancel: (id) => request('/publish/tasks/' + id + '/cancel', { method: 'POST' }),
+}
+
+export const settingsApi = {
+  list: () => request('/settings'),
+  get: (key) => request('/settings/' + key),
+  set: (key, value) => request('/settings/' + key, { method: 'PUT', body: JSON.stringify({ value }) }),
 }
