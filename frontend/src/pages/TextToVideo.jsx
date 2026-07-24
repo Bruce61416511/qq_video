@@ -373,6 +373,9 @@ export default function TextToVideo() {
                       {statusLabels[s.status] || s.status}
                     </Tag>
                     <span style={{ fontSize: 12, color: '#8c8c8c', marginLeft: 8 }}>{s.duration}秒</span>
+                    {s.status === 'video' && s.progress > 0 && (
+                      <Progress percent={s.progress} size="small" style={{ marginTop: 4 }} />
+                    )}
                     <p style={{ margin: '4px 0 0', fontSize: 12, color: '#8c8c8c' }}>
                       画面: {s.scene_prompt?.substring(0, 40)}...
                     </p>

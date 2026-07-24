@@ -52,19 +52,18 @@ async def _edge_tts(text: str, output_path: str, voice_id: str = None) -> str:
     """Edge TTS - free, good quality Chinese voices."""
     voice = voice_id or "zh-CN-XiaoxiaoNeural"  # warm female voice
     try:
-        # Use edge-tts CLI
-        # Try full path for edge-tts first
-    edge_exe = "edge-tts"
-    possible_paths = [
-        os.path.expandvars(r"%APPDATA%\Python\Python314\Scripts\edge-tts.exe"),
-        os.path.expandvars(r"%LOCALAPPDATA%\Programs\Python\Python314\Scripts\edge-tts.exe"),
-        "edge-tts",
-    ]
-    for p in possible_paths:
-        if os.path.exists(p) or p == "edge-tts":
-            edge_exe = p
-            break
-    cmd = [
+        # Use edge-tts CLI - try full path first
+        edge_exe = "edge-tts"
+        possible_paths = [
+            os.path.expandvars(r"%APPDATA%\Python\Python314\Scripts\edge-tts.exe"),
+            os.path.expandvars(r"%LOCALAPPDATA%\Programs\Python\Python314\Scripts\edge-tts.exe"),
+            "edge-tts",
+        ]
+        for p in possible_paths:
+            if os.path.exists(p) or p == "edge-tts":
+                edge_exe = p
+                break
+        cmd = [
             edge_exe,
             "--voice", voice,
             "--text", text,

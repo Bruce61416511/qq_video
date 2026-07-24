@@ -35,6 +35,7 @@ class MediaShotOut(BaseModel):
     duration: str
     clip_path: str
     audio_path: str
+    progress: int = 0
     status: str
     model_config = {"from_attributes": True}
 

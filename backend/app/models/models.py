@@ -55,6 +55,7 @@ class MediaShot(Base):
     clip_path = Column(String(500), default="")
     audio_path = Column(String(500), default="")
     status = Column(String(20), default="pending")
+    progress = Column(Integer, default=0)
 
 class PublishTask(Base):
     __tablename__ = "publish_tasks"

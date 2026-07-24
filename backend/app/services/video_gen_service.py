@@ -7,7 +7,7 @@ import httpx
 from ..config import get_setting
 
 
-async def generate_video_clip(prompt: str, duration: str = "5", size: str = "9:16", resolution: str = "1080P") -> str:
+async def generate_video_clip(prompt: str, duration: str = "5", size: str = "9:16", resolution: str = "1080P", progress_callback=None):
     """Generate a video clip from text prompt.
     
     Returns: URL or local file path to the generated video.
@@ -31,7 +31,7 @@ async def generate_video_clip(prompt: str, duration: str = "5", size: str = "9:1
     handler = handlers.get(service)
     if handler:
         try:
-            return await handler(prompt, duration, size, resolution, api_key, api_secret)
+            return await handler(prompt, duration, size, resolution, api_key, api_secret, progress_callback)
         except Exception as e:
             print(f"[VideoGen] {service} error: {e}")
             return {"status": "error", "service": service, "message": str(e), "prompt": prompt[:40]}
@@ -39,7 +39,7 @@ async def generate_video_clip(prompt: str, duration: str = "5", size: str = "9:1
     return {"status": "unknown_service", "service": service, "message": f"未知服务: {service}"}
 
 
-async def _kling_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str):
+async def _kling_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str, progress_callback=None):
     """Kling AI video generation.
     API docs: https://api.klingai.com
     Flow: create task -> poll status -> get video URL -> download
@@ -89,17 +89,17 @@ async def _kling_generate(prompt: str, duration: str, size: str, resolution: str
         return {"status": "timeout", "service": "kling", "task_id": task_id}
 
 
-async def _jimeng_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str):
+async def _jimeng_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str, progress_callback=None):
     """即梦 Jimeng video generation. Placeholder - API docs needed."""
     return {"status": "not_implemented", "service": "jimeng", "message": "即梦 API 接入待实现"}
 
 
-async def _runway_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str):
+async def _runway_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str, progress_callback=None):
     """Runway Gen-3 video generation. Placeholder."""
     return {"status": "not_implemented", "service": "runway", "message": "Runway API 接入待实现"}
 
 
-async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str):
+async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str, progress_callback=None):
     """Wan-2.1 via Alibaba Bailian (DashScope) API.
     Model: wanx2.1-t2v-plus
     Flow: create task -> poll status -> get video URL -> download
@@ -156,7 +156,9 @@ async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, 
         # Step 2: Poll for completion
         for attempt in range(60):  # max ~10 min with 10s interval
             await asyncio.sleep(10)
-            
+            if progress_callback:
+                pct = min(99, int((attempt + 1) / 60 * 100))
+                await progress_callback(pct)
             poll_resp = await client.get(
                 f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}",
                 headers={"Authorization": f"Bearer {api_key}"},
@@ -183,6 +185,6 @@ async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, 
         return {"status": "timeout", "service": "wan", "task_id": task_id}
 
 
-async def _cogvideo_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str):
+async def _cogvideo_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str, progress_callback=None):
     """CogVideo - open source, can run locally or via API."""
     return {"status": "not_implemented", "service": "cogvideo", "message": "CogVideo 接入待实现"}

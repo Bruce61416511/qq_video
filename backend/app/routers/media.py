@@ -1,6 +1,7 @@
 import os
 import uuid
 import asyncio
+import traceback
 from datetime import datetime
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,8 @@ from ..schemas.schemas import MediaOut, MediaShotOut, VideoGenerateRequest, Gene
 from ..config import UPLOAD_DIR
 
 router = APIRouter(prefix="/api/media", tags=["media"])
+
+_bg_tasks: set = set()
 
 
 @router.get("", response_model=list[MediaOut])
@@ -126,7 +129,9 @@ async def generate_video(req: VideoGenerateRequest, db: AsyncSession = Depends(g
     await db.commit()
 
     # Kick off background generation
-    asyncio.create_task(_run_generation_pipeline(media.id, req))
+    task = asyncio.create_task(_run_generation_pipeline(media.id, req))
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
 
     return media
 
@@ -137,6 +142,13 @@ async def _run_generation_pipeline(media_id: int, req: VideoGenerateRequest):
     2. Compose all clips into final video
     3. Update media record
     """
+    try:
+        await _do_run_pipeline(media_id, req)
+    except Exception as e:
+        print(f"[Pipeline] FATAL: {traceback.format_exc()}")
+        await _update_media(media_id, status=MediaStatus.failed, duration=str(e)[:100])
+
+async def _do_run_pipeline(media_id: int, req: VideoGenerateRequest):
     from ..services.video_gen_service import generate_video_clip
     from ..services.tts_service import generate_voice
     from ..services.video_composer import compose_video
@@ -159,12 +171,16 @@ async def _run_generation_pipeline(media_id: int, req: VideoGenerateRequest):
         # Video generation phase
         await _update_shot_status(media_id, shot_index, "video")
 
-        # Generate video clip
+        # Generate video clip with progress tracking
+        async def update_progress(pct):
+            await _update_shot(media_id, shot_index, progress=pct)
+
         video_result = await generate_video_clip(
             prompt=shot.scene_prompt,
             duration=shot.duration,
             size=req.size,
             resolution=req.resolution,
+            progress_callback=update_progress,
         )
 
         clip = {
@@ -263,7 +279,7 @@ async def _update_shot_status(media_id: int, shot_index: int, status: str):
         print(f"[Pipeline] update shot status error: {e}")
 
 
-async def _update_shot(media_id: int, shot_index: int, status: str = None, clip_path: str = "", audio_path: str = ""):
+async def _update_shot(media_id: int, shot_index: int, status: str = None, clip_path: str = "", audio_path: str = "", progress: int = None):
     """Update a shot's fields."""
     try:
         async with async_session() as db:
@@ -281,6 +297,8 @@ async def _update_shot(media_id: int, shot_index: int, status: str = None, clip_
                     shot.clip_path = clip_path
                 if audio_path:
                     shot.audio_path = audio_path
+                if progress is not None:
+                    shot.progress = progress
                 await db.commit()
     except Exception as e:
         print(f"[Pipeline] update shot error: {e}")
