@@ -148,13 +148,16 @@ async def _run_generation_pipeline(media_id: int, req: VideoGenerateRequest):
         shot_index = i + 1
         print(f"[Pipeline] shot {shot_index}/{len(req.shots)}: scene='{shot.scene_prompt[:30]}...'")
 
-        # Update shot status to generating
-        await _update_shot_status(media_id, shot_index, "generating")
+        # TTS phase
+        await _update_shot_status(media_id, shot_index, "tts")
 
         # Generate voice audio (do this first, it's fast with edge-tts)
         audio_path = ""
         if shot.voice_script.strip():
             audio_path = await generate_voice(shot.voice_script)
+
+        # Video generation phase
+        await _update_shot_status(media_id, shot_index, "video")
 
         # Generate video clip
         video_result = await generate_video_clip(
@@ -173,6 +176,7 @@ async def _run_generation_pipeline(media_id: int, req: VideoGenerateRequest):
 
         if isinstance(video_result, dict):
             if video_result.get("status") == "done" and video_result.get("url"):
+                await _update_shot_status(media_id, shot_index, "downloading")
                 # Download video from URL
                 clip["video_path"] = await _download_video(video_result["url"], media_id, shot_index)
             elif video_result.get("status") == "no_api":

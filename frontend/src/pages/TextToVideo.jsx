@@ -350,13 +350,17 @@ export default function TextToVideo() {
             items={shotStatuses.map((s, i) => {
               const statusColors = {
                 pending: 'gray',
-                generating: 'blue',
+                tts: 'purple',
+                video: 'blue',
+                downloading: 'cyan',
                 done: 'green',
                 failed: 'red',
               }
               const statusLabels = {
-                pending: '等待中',
-                generating: '生成中...',
+                pending: '排队中',
+                tts: '配音中',
+                video: '生成画面',
+                downloading: '下载中',
                 done: '已完成',
                 failed: '失败',
               }
