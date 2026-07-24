@@ -345,12 +345,12 @@ async def _create_placeholder_clip(prompt: str, duration: str, size: str) -> str
         cmd = [
             "ffmpeg", "-y",
             "-f", "lavfi",
-            "-i", f"color=c=0x1a1a2e:s={res}:d={duration},drawtext=text='{safe_prompt}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2",
+            "-i", f"color=c=0x1a1a2e:s={res}:d={duration},drawtext=fontfile='C\\\\:/Windows/Fonts/simhei.ttf':text='{safe_prompt}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2",
             "-c:v", "libx264", "-preset", "ultrafast",
             "-movflags", "+faststart",
             output,
         ]
-        subprocess.run(cmd, capture_output=True, timeout=30)
+        subprocess.run(cmd, capture_output=True, encoding="utf-8", errors="replace", timeout=30)
         if os.path.exists(output):
             return output
     except Exception as e:

@@ -137,16 +137,16 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
 
                 if line2:
                     vf += (
-                        f",drawtext=text='{line1}':fontcolor=white:fontsize=32:"
+                        f",drawtext=fontfile='C\\\\:/Windows/Fonts/simhei.ttf':text='{line1}':fontcolor=white:fontsize=32:"
                         "box=1:boxcolor=black@0.5:boxborderw=6:"
                         "x=(w-text_w)/2:y=h-th-80,"
-                        f"drawtext=text='{line2}':fontcolor=white:fontsize=32:"
+                        f"drawtext=fontfile='C\\\\:/Windows/Fonts/simhei.ttf':text='{line2}':fontcolor=white:fontsize=32:"
                         "box=1:boxcolor=black@0.5:boxborderw=6:"
                         "x=(w-text_w)/2:y=h-th-30"
                     )
                 else:
                     vf += (
-                        f",drawtext=text='{line1}':fontcolor=white:fontsize=32:"
+                        f",drawtext=fontfile='C\\\\:/Windows/Fonts/simhei.ttf':text='{line1}':fontcolor=white:fontsize=32:"
                         "box=1:boxcolor=black@0.5:boxborderw=6:"
                         "x=(w-text_w)/2:y=h-th-55"
                     )
@@ -202,6 +202,8 @@ async def _run_ffmpeg(cmd: list, output_path: str) -> dict:
             cmd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=300,  # 5 min timeout
         )
         if proc.returncode != 0:
@@ -213,7 +215,7 @@ async def _run_ffmpeg(cmd: list, output_path: str) -> dict:
             # Get duration
             probe = subprocess.run(
                 ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", output_path],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
             )
             duration = 0
             if probe.returncode == 0:
@@ -247,8 +249,9 @@ def _drawtext_filter(text: str) -> str:
     """Generate drawtext filter for subtitles."""
     # Escape special chars for ffmpeg
     safe = text.replace(":", "\\:").replace("'", "\\'")
+    font = "C\\\\:/Windows/Fonts/simhei.ttf"
     return (
-        f"drawtext=text='{safe}':"
+        f"drawtext=fontfile='{font}':text='{safe}':"
         "fontcolor=white:fontsize=48:"
         "box=1:boxcolor=black@0.5:boxborderw=10:"
         "x=(w-text_w)/2:y=h-th-60"
