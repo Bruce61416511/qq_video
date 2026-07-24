@@ -138,7 +138,7 @@ export default function TextToVideo() {
         <TextArea
           value={topic}
           onChange={e => setTopic(e.target.value)}
-          placeholder={'描述你想制作的视频内容，例如：\n\n一段关于益生菌对肠道健康益处的科普短视频，暖色调，食品特写镜头，配轻快的背景音乐'}
+          placeholder={'从以下四个方面描述你想制作的视频：\n1. 主题方向：要讲什么\n2. 目标人群：给谁看\n3. 风格调性：暖色调/科技感/电影感/治愈风\n4. 核心卖点：最想突出的 1-2 个信息\n\n例如：\n益生菌对肠道健康的好处，面向25-35岁上班族女性，暖色调+食材特写+轻快节奏，突出100亿活菌数据和肠道菌群对比'}
           rows={5}
           maxLength={500}
           showCount
@@ -433,8 +433,8 @@ export default function TextToVideo() {
         <Card size="small" style={{ marginTop: 20 }}>
           <span style={{ fontWeight: 600, fontSize: 13 }}>💡 文案提示</span>
           <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12, color: '#8c8c8c', lineHeight: 2 }}>
-            <li>描述越详细，AI 拆分分镜越精准（场景、色调、节奏）</li>
-            <li>食品大健康方向建议：食材特写 + 科普讲解 + 生活场景</li>
+            <li>从主题、人群、风格、卖点四个维度描述，AI 拆分的分镜最精准</li>
+            <li>卖点建议包含具体数据（如：100亿活菌、提高30%），LLM 会在分镜中自动融入对比可视化</li>
             <li>生成的视频会自动存入素材库，可在素材库中选择发布</li>
           </ul>
         </Card>
