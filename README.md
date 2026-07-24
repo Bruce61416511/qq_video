@@ -147,7 +147,7 @@ cd backend
 # 推荐使用虚拟环境
 python -m venv venv
 source venv/bin/activate  # Linux/macOS
-# venv\Scriptsctivate   # Windows
+# venv\Scripts\activate   # Windows
 
 pip install -r requirements.txt
 ```
@@ -336,5 +336,7 @@ npm run dev
 - 首次使用发布功能需 `playwright install chromium`
 - Wan-2.1 单条约 12 元，建议先用短时长、少分镜控制成本
 - ffmpeg 合成需系统安装 ffmpeg，未安装时各分镜分别入库
+- **中文字幕依赖黑体字体**（`C:/Windows/Fonts/simhei.ttf`），Linux 部署需安装中文字体包
+- Windows 下 ffmpeg 输出编码为 GBK，已通过 `encoding='utf-8'` 修复，无需额外配置
 - Edge TTS 国内可能被墙，推荐使用百炼 CosyVoice
 - 后端重启后卡在 `generating` 状态的视频会自动标记为失败
