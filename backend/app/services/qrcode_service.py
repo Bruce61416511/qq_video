@@ -57,7 +57,7 @@ async def _wait_login(account_id: int):
             except:
                 pass
             num += 1
-            if num > 13:
+            if num > 60:
                 session["status"] = "error"
                 session["error"] = "Scan timeout"
                 print(f"[QR #{account_id}] Timeout: scan not detected")
