@@ -1,4 +1,4 @@
-# 视频号智能助手
+﻿# 视频号智能助手
 
 AI 驱动的微信视频号矩阵管理系统，支持 AI 分镜策划 → 视频生成 → 配音 → 字幕合成 → 多账号一键发布。
 
@@ -25,7 +25,7 @@ AI 驱动的微信视频号矩阵管理系统，支持 AI 分镜策划 → 视�
 └──────────────────────┬───────────────────────────────┘
                        │ REST API
 ┌──────────────────────┴───────────────────────────────┐
-│  后端 (FastAPI + SQLite + Playwright)  port 8001     │
+│  后端 (FastAPI + SQLite + Playwright)  port 8000     │
 │                                                      │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
 │  │ LLM 分镜 │  │ TTS 配音 │  │ 视频生成 │           │
@@ -160,11 +160,24 @@ npm install
 ```
 
 ### 5. 启动服务
+**首次使用（只需执行一次）：**
 
 ```bash
-# 终端 1 - 后端 (port 8001)
 cd backend
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8001
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # Linux/macOS
+pip install -r requirements.txt
+playwright install chromium
+```
+
+**每次启动：**
+
+```bash
+# 终端 1 - 后端 (port 8000)
+cd backend
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # Linux/macOS
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 # 终端 2 - 前端 (port 5173)
 cd frontend
@@ -172,7 +185,6 @@ npm run dev
 ```
 
 访问 `http://localhost:5173`
-
 ## 使用流程
 
 ### 第一步：配置 API Key
@@ -340,3 +352,4 @@ npm run dev
 - Windows 下 ffmpeg 输出编码为 GBK，已通过 `encoding='utf-8'` 修复，无需额外配置
 - Edge TTS 国内可能被墙，推荐使用百炼 CosyVoice
 - 后端重启后卡在 `generating` 状态的视频会自动标记为失败
+
