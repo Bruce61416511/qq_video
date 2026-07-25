@@ -185,6 +185,17 @@ npm run dev
 ```
 
 访问 `http://localhost:5173`
+### 停止服务
+
+```bash
+# Windows - 关闭所有相关进程
+Get-Process | Where-Object { $_.ProcessName -match 'python|node|chrome|chromium' } | Stop-Process -Force
+
+# Linux/macOS
+pkill -f uvicorn
+pkill -f vite
+pkill -f chromium
+```
 ## 使用流程
 
 ### 第一步：配置 API Key
