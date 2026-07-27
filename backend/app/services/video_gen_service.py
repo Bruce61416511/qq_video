@@ -3,8 +3,23 @@
 参考 MoneyPrinterTurbo: app/services/material.py
 支持 可灵 Kling / 即梦 Jimeng / Runway / Wan-2.1
 """
+import asyncio
 import httpx
 from ..config import get_setting
+
+_VIDEO_MODEL_DEFAULTS = {
+    "wan": "wanx2.1-t2v-plus",
+    "kling": "kling-v1",
+    "jimeng": "jimeng-t2v",
+    "runway": "gen3a_turbo",
+    "cogvideo": "cogvideox-2b",
+}
+
+
+def _video_model_for(service: str) -> str:
+    """Return the default model for a given video service."""
+    return _VIDEO_MODEL_DEFAULTS.get(service, "wanx2.1-t2v-plus")
+
 
 
 async def generate_video_clip(prompt: str, duration: str = "5", size: str = "9:16", resolution: str = "1080P", progress_callback=None):
@@ -14,6 +29,7 @@ async def generate_video_clip(prompt: str, duration: str = "5", size: str = "9:1
     Currently returns placeholder - real API integration requires API keys.
     """
     service = await get_setting("video_service")
+    model = await get_setting("video_model") or _video_model_for(service)
     api_key = await get_setting("video_api_key")
     api_secret = await get_setting("video_api_secret")
 
@@ -31,7 +47,7 @@ async def generate_video_clip(prompt: str, duration: str = "5", size: str = "9:1
     handler = handlers.get(service)
     if handler:
         try:
-            return await handler(prompt, duration, size, resolution, api_key, api_secret, progress_callback)
+            return await handler(prompt, duration, size, resolution, model, api_key, api_secret, progress_callback)
         except Exception as e:
             print(f"[VideoGen] {service} error: {e}")
             return {"status": "error", "service": service, "message": str(e), "prompt": prompt[:40]}
@@ -39,11 +55,15 @@ async def generate_video_clip(prompt: str, duration: str = "5", size: str = "9:1
     return {"status": "unknown_service", "service": service, "message": f"未知服务: {service}"}
 
 
-async def _kling_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str, progress_callback=None):
+async def _kling_generate(prompt: str, duration: str, size: str, resolution: str, model: str, api_key: str, api_secret: str, progress_callback=None):
     """Kling AI video generation.
+    Model: configurable via Settings (default: kling-v1)
     API docs: https://api.klingai.com
     Flow: create task -> poll status -> get video URL -> download
     """
+    # Use service-specific fallback if no model explicitly set
+    kling_model = model or _video_model_for("kling")
+
     # Step 1: Create task
     async with httpx.AsyncClient(timeout=120.0) as client:
         create_resp = await client.post(
@@ -53,7 +73,7 @@ async def _kling_generate(prompt: str, duration: str, size: str, resolution: str
                 "Content-Type": "application/json",
             },
             json={
-                "model_name": "kling-v1",
+                "model_name": kling_model,
                 "prompt": prompt,
                 "duration": duration,
                 "mode": "std",
@@ -69,7 +89,6 @@ async def _kling_generate(prompt: str, duration: str, size: str, resolution: str
             return {"status": "error", "service": "kling", "message": "无 task_id"}
 
         # Step 2: Poll for completion
-        import asyncio
         for _ in range(30):  # max 5 min
             await asyncio.sleep(10)
             poll = await client.get(
@@ -89,23 +108,24 @@ async def _kling_generate(prompt: str, duration: str, size: str, resolution: str
         return {"status": "timeout", "service": "kling", "task_id": task_id}
 
 
-async def _jimeng_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str, progress_callback=None):
+async def _jimeng_generate(prompt: str, duration: str, size: str, resolution: str, model: str, api_key: str, api_secret: str, progress_callback=None):
     """即梦 Jimeng video generation. Placeholder - API docs needed."""
     return {"status": "not_implemented", "service": "jimeng", "message": "即梦 API 接入待实现"}
 
 
-async def _runway_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str, progress_callback=None):
+async def _runway_generate(prompt: str, duration: str, size: str, resolution: str, model: str, api_key: str, api_secret: str, progress_callback=None):
     """Runway Gen-3 video generation. Placeholder."""
     return {"status": "not_implemented", "service": "runway", "message": "Runway API 接入待实现"}
 
 
-async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str, progress_callback=None):
+async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, model: str, api_key: str, api_secret: str, progress_callback=None):
     """Wan-2.1 via Alibaba Bailian (DashScope) API.
-    Model: wanx2.1-t2v-plus
+    Model: configurable via Settings (default: wanx2.1-t2v-plus)
     Flow: create task -> poll status -> get video URL -> download
     """
-    import asyncio
-    
+    # Use service-specific fallback if no model explicitly set
+    wan_model = model or _video_model_for("wan")
+
     # Map size to aspect ratio for Wan
     ratio_map = {"9:16": "9:16", "16:9": "16:9", "1:1": "1:1"}
     aspect = ratio_map.get(size, "9:16")
@@ -118,7 +138,7 @@ async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, 
     async with httpx.AsyncClient(timeout=300.0) as client:
         # Step 1: Create video generation task
         create_body = {
-            "model": "wanx2.1-t2v-plus",
+            "model": wan_model,
             "input": {
                 "prompt": prompt,
                 "duration": dur,
@@ -185,6 +205,6 @@ async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, 
         return {"status": "timeout", "service": "wan", "task_id": task_id}
 
 
-async def _cogvideo_generate(prompt: str, duration: str, size: str, resolution: str, api_key: str, api_secret: str, progress_callback=None):
+async def _cogvideo_generate(prompt: str, duration: str, size: str, resolution: str, model: str, api_key: str, api_secret: str, progress_callback=None):
     """CogVideo - open source, can run locally or via API."""
     return {"status": "not_implemented", "service": "cogvideo", "message": "CogVideo 接入待实现"}

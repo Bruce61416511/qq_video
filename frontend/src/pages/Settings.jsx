@@ -34,19 +34,54 @@ const TTS_VOICE_OPTIONS = [
   { value: 'longyichen', label: '龙一辰 (沉稳男声)' },
 ]
 
-const LLM_MODEL_OPTIONS = [
-  { value: 'gpt-4o', label: 'gpt-4o' },
-  { value: 'deepseek-chat', label: 'deepseek-chat' },
-  { value: 'qwen-plus', label: 'qwen-plus' },
-  { value: 'glm-4', label: 'glm-4' },
-  { value: 'moonshot-v1-8k', label: 'moonshot-v1-8k' },
-]
+const LLM_MODEL_BY_SERVICE = {
+  openai: [
+    { value: 'gpt-4o', label: 'gpt-4o (\u63a8\u8350)' },
+    { value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
+  ],
+  deepseek: [
+    { value: 'deepseek-chat', label: 'deepseek-chat (\u63a8\u8350)' },
+    { value: 'deepseek-reasoner', label: 'deepseek-reasoner' },
+  ],
+  qwen: [
+    { value: 'qwen-plus', label: 'qwen-plus (\u63a8\u8350)' },
+    { value: 'qwen-max', label: 'qwen-max' },
+  ],
+  zhipu: [
+    { value: 'glm-4', label: 'glm-4 (\u63a8\u8350)' },
+    { value: 'glm-4-flash', label: 'glm-4-flash' },
+  ],
+  moonshot: [
+    { value: 'moonshot-v1-8k', label: 'moonshot-v1-8k (\u63a8\u8350)' },
+  ],
+}
 
-const VIDEO_MODEL_OPTIONS = [
-  { value: 'wanx2.1-t2v-plus', label: 'wanx2.1-t2v-plus (推荐)' },
-  { value: 'kling-v1', label: 'kling-v1' },
-  { value: 'kling-v1-5', label: 'kling-v1-5' },
-]
+function getLLMModelOptions(service) {
+  return LLM_MODEL_BY_SERVICE[service] || LLM_MODEL_BY_SERVICE.openai
+}
+
+const VIDEO_MODEL_BY_SERVICE = {
+  wan: [
+    { value: 'wanx2.1-t2v-plus', label: 'wanx2.1-t2v-plus (推荐)' },
+  ],
+  kling: [
+    { value: 'kling-v1', label: 'kling-v1' },
+    { value: 'kling-v1-5', label: 'kling-v1-5' },
+  ],
+  jimeng: [
+    { value: 'jimeng-t2v', label: 'jimeng-t2v' },
+  ],
+  runway: [
+    { value: 'gen3a_turbo', label: 'gen3a_turbo' },
+  ],
+  cogvideo: [
+    { value: 'cogvideox-2b', label: 'cogvideox-2b' },
+  ],
+}
+
+function getVideoModelOptions(service) {
+  return VIDEO_MODEL_BY_SERVICE[service] || VIDEO_MODEL_BY_SERVICE.wan
+}
 
 const LLM_OPTIONS = [
   { value: 'openai', label: 'OpenAI (GPT-4o)' },
@@ -103,9 +138,9 @@ function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, service
             placeholder="选择模型"
             onChange={v => setConfig(prev => ({ ...prev, [serviceKey.replace('_service', '_model')]: { ...prev[serviceKey.replace('_service', '_model')], value: v } }))}
             options={
-              title === 'LLM 分镜策划' ? LLM_MODEL_OPTIONS :
+              title === 'LLM 分镜策划' ? getLLMModelOptions(config[serviceKey]?.value) :
               title === 'TTS 语音合成' ? TTS_MODEL_OPTIONS :
-              VIDEO_MODEL_OPTIONS
+              getVideoModelOptions(config[serviceKey]?.value)
             }
           />
         </div>

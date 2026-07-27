@@ -37,6 +37,7 @@ async def _load_settings():
         
         _cache_loaded = True
     except Exception as e:
+        _cache_loaded = True
         print(f"[Config] load settings failed: {e}")
 
 
