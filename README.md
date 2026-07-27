@@ -141,17 +141,15 @@ playwright install chromium
 
 ### 3. 后端安装
 
-```bash
+```powershell
 cd backend
 
-# 推荐使用虚拟环境
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-# venv\Scripts\activate   # Windows
+# 创建虚拟环境（仅首次）
+python -m venv .venv
 
-pip install -r requirements.txt
+# 安装依赖（仅首次）
+.venv\Scripts\pip install -r requirements.txt
 ```
-
 ### 4. 前端安装
 
 ```bash
@@ -160,41 +158,44 @@ npm install
 ```
 
 ### 5. 启动服务
+
 **首次使用（只需执行一次）：**
 
-```bash
+```powershell
 cd backend
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Linux/macOS
-pip install -r requirements.txt
-playwright install chromium
+.venv\Scripts\playwright install chromium
 ```
 
 **每次启动：**
 
-```bash
+```powershell
 # 终端 1 - 后端 (port 8000)
 cd backend
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Linux/macOS
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-# 终端 2 - 前端 (port 5173，strictPort 固定)
+# 终端 2 - 前端 (port 5173)
 cd frontend
 npm run dev
 ```
 
 访问 `http://localhost:5173`
+
 ### 停止服务
 
-```bash
-# Windows - 关闭所有相关进程
+```powershell
+# 一键关闭所有相关进程
 Get-Process | Where-Object { $_.ProcessName -match 'python|node|chrome|chromium' } | Stop-Process -Force
+```
 
-# Linux/macOS
-pkill -f uvicorn
-pkill -f vite
-pkill -f chromium
+### 端口被占用？
+
+```powershell
+# 查看谁占用了端口
+netstat -ano | findstr ":8000"
+netstat -ano | findstr ":5173"
+
+# 记下 PID，然后杀掉
+taskkill /PID <PID> /F
 ```
 ## 使用流程
 
