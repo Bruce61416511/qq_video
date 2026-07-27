@@ -206,7 +206,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 cd frontend
 npm install
 npm run dev
-# http://localhost:5173
+# http://localhost:5173（Vite strictPort 固定）
 ```
 
 ### 后端
@@ -254,7 +254,7 @@ AI微信视频发布/
 │   │   └── services/
 │   │       └── api.js            # API 请求封装
 │   ├── package.json
-│   └── vite.config.js
+│   └── vite.config.js          # strictPort: true，固定 5173
 ├── backend/                      # Python FastAPI
 │   ├── app/
 │   │   ├── main.py               # 应用入口 + Worker 启动

@@ -70,7 +70,7 @@ export default function MediaLibrary() {
     const formData = new FormData()
     formData.append('file', file)
     try {
-      const res = await fetch('http://localhost:8001/api/media/upload', { method: 'POST', body: formData })
+      const res = await fetch('http://localhost:8000/api/media/upload', { method: 'POST', body: formData })
       if (!res.ok) throw new Error('上传失败')
       message.success(`上传成功: ${file.name}`)
       loadMedia()
@@ -93,7 +93,7 @@ export default function MediaLibrary() {
   const playVideo = (record) => {
     const name = (record.filepath || '').replace(/\\/g, '/').split('/').pop()
     if (!name) { message.warning('文件路径无效'); return }
-    window.open('http://localhost:8001/uploads/' + name, '_blank')
+    window.open('http://localhost:8000/uploads/' + name, '_blank')
   }
 
   const readyCount = media.filter(m => m.status === 'ready').length

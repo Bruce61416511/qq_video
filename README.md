@@ -88,7 +88,7 @@ AI微信视频发布/
 │   │       └── api.js             # API 封装
 │   ├── index.html
 │   ├── package.json
-│   └── vite.config.js
+│   └── vite.config.js          # strictPort: true，固定 5173
 │
 └── README.md
 ```
@@ -179,7 +179,7 @@ cd backend
 # source .venv/bin/activate     # Linux/macOS
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
-# 终端 2 - 前端 (port 5173)
+# 终端 2 - 前端 (port 5173，strictPort 固定)
 cd frontend
 npm run dev
 ```
