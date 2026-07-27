@@ -3,7 +3,8 @@ import json
 import os
 from pathlib import Path
 from datetime import datetime
-from playwright.async_api import async_playwright
+import time
+from playwright.sync_api import sync_playwright
 from .qrcode_service import _cookie_path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -22,26 +23,26 @@ async def publish_video(
     if not os.path.exists(cookie_file):
         return {"ok": False, "error": "no cookies, please scan QR first"}
 
-    async with async_playwright() as pw:
-        browser = await pw.chromium.launch(
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(
             headless=False,
             args=["--disable-blink-features=AutomationControlled"],
         )
-        context = await browser.new_context(storage_state=cookie_file)
-        page = await context.new_page()
+        context = browser.new_context(storage_state=cookie_file)
+        page = context.new_page()
 
         try:
             print("[Publish] opening create page...")
-            await page.goto(
+            page.goto(
                 "https://channels.weixin.qq.com/platform/post/create",
                 timeout=30000,
             )
-            await page.screenshot(path=str(SCREENSHOT_DIR / "step1_page.png"))
+            page.screenshot(path=str(SCREENSHOT_DIR / "step1_page.png"))
             print(f"[Publish] page URL: {page.url}")
 
             if "/login" in page.url:
-                await context.close()
-                await browser.close()
+                context.close()
+                browser.close()
                 return {"ok": False, "error": "login expired, please re-scan QR"}
 
             abs_video_path = os.path.abspath(video_path)
@@ -50,8 +51,8 @@ async def publish_video(
 
             print("[Publish] uploading video...")
             file_input = page.locator('input[type="file"]')
-            await file_input.set_input_files(abs_video_path)
-            await page.screenshot(path=str(SCREENSHOT_DIR / "step2_uploaded.png"))
+            file_input.set_input_files(abs_video_path)
+            page.screenshot(path=str(SCREENSHOT_DIR / "step2_uploaded.png"))
             print("[Publish] video selected, waiting...")
 
             # === wait for video processing ===
@@ -59,15 +60,15 @@ async def publish_video(
             processing_done = False
             had_status = False
             for i in range(VIDEO_PROCESSING_TIMEOUT):
-                await asyncio.sleep(1)
+                time.sleep(1)
                 try:
-                    st = await page.locator(".media-status-content").first.inner_text(timeout=500)
+                    st = page.locator(".media-status-content").first.inner_text(timeout=500)
                     had_status = True
                     if i % 5 == 0 or '\u5931\u8d25' in st or '\u6210\u529f' in st:
                         print(f"[Publish] [{i}s] status: {st[:100]}")
                     if '\u5931\u8d25' in st:
-                        await context.close()
-                        await browser.close()
+                        context.close()
+                        browser.close()
                         return {"ok": False, "error": f"processing failed: {st[:200]}"}
                     if '\u6210\u529f' in st or '\u5904\u7406\u5b8c\u6210' in st or "100%" in st:
                         print(f"[Publish] processing done ({i}s)")
@@ -77,7 +78,7 @@ async def publish_video(
                     if had_status:
                         try:
                             editor = page.locator("div.input-editor").first
-                            if await editor.count() > 0:
+                            if editor.count() > 0:
                                 print(f"[Publish] [{i}s] status gone, editor visible -> done")
                                 processing_done = True
                                 break
@@ -89,81 +90,81 @@ async def publish_video(
             if not processing_done:
                 print(f"[Publish] WARNING timeout, trying to continue...")
 
-            await page.screenshot(path=str(SCREENSHOT_DIR / "step3_processed.png"))
-            await asyncio.sleep(3)
+            page.screenshot(path=str(SCREENSHOT_DIR / "step3_processed.png"))
+            time.sleep(3)
 
-            await _fill_title(page, title)
-            await page.screenshot(path=str(SCREENSHOT_DIR / "step4_titled.png"))
+            _fill_title(page, title)
+            page.screenshot(path=str(SCREENSHOT_DIR / "step4_titled.png"))
 
             if tags:
                 try:
                     print("[Publish] adding tags...")
                     tag_btn = page.locator('div:has-text("添加标签")').first
-                    if await tag_btn.count() > 0:
-                        await tag_btn.click()
-                        await asyncio.sleep(0.5)
+                    if tag_btn.count() > 0:
+                        tag_btn.click()
+                        time.sleep(0.5)
                         tag_input = page.locator('input[placeholder*="标签"]').first
-                        if await tag_input.count() > 0:
-                            await tag_input.fill(tags)
-                            await asyncio.sleep(0.5)
+                        if tag_input.count() > 0:
+                            tag_input.fill(tags)
+                            time.sleep(0.5)
                 except Exception as e:
                     print(f"[Publish] tag error: {e}")
 
-            await page.screenshot(path=str(SCREENSHOT_DIR / "step5_before_publish.png"))
-            await asyncio.sleep(2)
+            page.screenshot(path=str(SCREENSHOT_DIR / "step5_before_publish.png"))
+            time.sleep(2)
 
             print("[Publish] clicking publish button...")
             publish_btn = page.get_by_role("button", name="发表").first
-            if await publish_btn.count() == 0:
+            if publish_btn.count() == 0:
                 publish_btn = page.locator('button:has-text("发表")').first
-            if await publish_btn.count() == 0:
+            if publish_btn.count() == 0:
                 return {"ok": False, "error": "publish button not found"}
-            await publish_btn.click()
+            publish_btn.click()
             print("[Publish] publish button clicked")
 
-            result = await _wait_publish_result(page, 60)
-            await page.screenshot(path=str(SCREENSHOT_DIR / "step6_after_publish.png"))
+            result = _wait_publish_result(page, 60)
+            page.screenshot(path=str(SCREENSHOT_DIR / "step6_after_publish.png"))
 
-            await context.close()
-            await browser.close()
+            context.close()
+            browser.close()
             print(f"[Publish] done: {result.get('message', result.get('error', ''))}")
             return result
 
         except Exception as e:
             try:
-                await page.screenshot(path=str(SCREENSHOT_DIR / "step_error.png"))
+                page.screenshot(path=str(SCREENSHOT_DIR / "step_error.png"))
             except:
                 pass
             try:
-                await context.close()
-                await browser.close()
+                context.close()
+                browser.close()
             except Exception:
                 pass
             print(f"[Publish] exception: {e}")
             return {"ok": False, "error": str(e)}
 
 
-async def _fill_title(page, title: str):
+def _fill_title(page, title: str):
     try:
         print("[Publish] filling title...")
         title_editor = page.locator("div.input-editor").first
-        await title_editor.click()
-        await asyncio.sleep(0.5)
-        await page.keyboard.press("Control+KeyA")
-        await page.keyboard.press("Backspace")
-        await asyncio.sleep(0.3)
-        await page.keyboard.type(title)
-        await asyncio.sleep(1)
+        title_editor.click()
+        time.sleep(0.5)
+        page.keyboard.press("Control+KeyA")
+        page.keyboard.press("Backspace")
+        time.sleep(0.3)
+        page.keyboard.type(title)
+        time.sleep(1)
         print(f"[Publish] title filled: {title}")
     except Exception as e:
         print(f"[Publish] title error: {e}")
 
 
-async def _wait_publish_result(page, timeout: int = 60) -> dict:
+def _wait_publish_result(page, timeout: int = 60) -> dict:
     print(f"[Publish] waiting for result (max {timeout}s)...")
 
     for i in range(timeout):
-        await asyncio.sleep(1)
+        time.sleep(1)
 
         try:
             url = page.url
@@ -183,13 +184,13 @@ async def _wait_publish_result(page, timeout: int = 60) -> dict:
             for sel in success_selectors:
                 try:
                     el = page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible(timeout=500):
-                        text = await el.inner_text(timeout=500)
+                    if el.count() > 0 and el.is_visible(timeout=500):
+                        text = el.inner_text(timeout=500)
                         print(f"[Publish] [{i}s] OK success: {text[:80]}")
                         confirm_btn = page.locator('button:has-text("确定"), button:has-text("我知道了"), button:has-text("关闭")').first
-                        if await confirm_btn.count() > 0:
-                            await confirm_btn.click()
-                            await asyncio.sleep(1)
+                        if confirm_btn.count() > 0:
+                            confirm_btn.click()
+                            time.sleep(1)
                         return {"ok": True, "message": f"published: {text[:80]}"}
                 except:
                     pass
@@ -205,8 +206,8 @@ async def _wait_publish_result(page, timeout: int = 60) -> dict:
             for sel in error_selectors:
                 try:
                     el = page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible(timeout=500):
-                        text = await el.inner_text(timeout=500)
+                    if el.count() > 0 and el.is_visible(timeout=500):
+                        text = el.inner_text(timeout=500)
                         print(f"[Publish] [{i}s] FAIL: {text[:120]}")
                         return {"ok": False, "error": f"publish failed: {text[:200]}"}
                 except:

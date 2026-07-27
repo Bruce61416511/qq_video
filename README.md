@@ -1,4 +1,4 @@
-﻿# 视频号智能助手
+# 视频号智能助手
 
 AI 驱动的微信视频号矩阵管理系统，支持 AI 分镜策划 → 视频生成 → 配音 → 字幕合成 → 多账号一键发布。
 
@@ -166,16 +166,14 @@ cd backend
 .venv\Scripts\playwright install chromium
 ```
 
-**每次启动：**
+**每次启动（后台启动，无需开多个终端）：**
 
 ```powershell
-# 终端 1 - 后端 (port 8000)
-cd backend
-.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+# 后端 (port 8000)
+Start-Process -WindowStyle Hidden powershell -ArgumentList "-Command", "cd '$PWD\backend'; .\.venv\Scripts\Activate.ps1; python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
-# 终端 2 - 前端 (port 5173)
-cd frontend
-npm run dev
+# 前端 (port 5173)
+Start-Process -WindowStyle Hidden powershell -ArgumentList "-Command", "cd '$PWD\frontend'; npm run dev"
 ```
 
 访问 `http://localhost:5173`
@@ -183,9 +181,12 @@ npm run dev
 ### 停止服务
 
 ```powershell
-# 一键关闭所有相关进程
-Get-Process | Where-Object { $_.ProcessName -match 'python|node|chrome|chromium' } | Stop-Process -Force
-```
+# 按端口杀进程（精确，不影响其他项目）
+$p8000 = (Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue).OwningProcess | Select-Object -Unique
+$p5173 = (Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue).OwningProcess | Select-Object -Unique
+$p8000 | Where-Object { $_ -ne 0 } | ForEach-Object { Stop-Process -Id $_ -Force }
+$p5173 | Where-Object { $_ -ne 0 } | ForEach-Object { Stop-Process -Id $_ -Force }
+``r
 
 ### 端口被占用？
 

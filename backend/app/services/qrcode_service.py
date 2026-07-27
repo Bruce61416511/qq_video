@@ -1,8 +1,9 @@
-﻿import asyncio
+import asyncio
 import json
 import os
+import time
 from pathlib import Path
-from playwright.async_api import async_playwright
+from playwright.sync_api import sync_playwright
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 COOKIE_DIR = BASE_DIR / "cookies"
@@ -24,35 +25,49 @@ async def start_qr_login(account_id: int):
     result_holder = {"status": "waiting", "nickname": ""}
     _active_logins[account_id] = result_holder
 
-    async def _do():
+    def _do():
         try:
-            async with async_playwright() as pw:
-                browser = await pw.chromium.launch(headless=False)
-                context = await browser.new_context()
-                page = await context.new_page()
+            with sync_playwright() as pw:
+                browser = pw.chromium.launch(headless=False)
+                context = browser.new_context()
+                page = context.new_page()
 
-                await page.goto(
+                page.goto(
                     "https://channels.weixin.qq.com/platform/login-for-iframe?dark_mode=true&host_type=1",
                     wait_until="networkidle"
                 )
-                await page.locator(".qrcode").click()
+                page.locator(".qrcode").click()
                 print(f"[QR #{account_id}] login page ready, waiting for scan...")
 
-                # Poll for scan — mask detection only (no qr-tip false positive)
+                # Wait for page to settle, then capture initial mask state
+                time.sleep(3)
+                initial_mask_shown = False
+                try:
+                    mask = page.locator(".mask").first
+                    if mask.count() > 0:
+                        cls = mask.get_attribute("class") or ""
+                        initial_mask_shown = "show" in cls
+                except:
+                    pass
+                print(f"[QR #{account_id}] initial mask.show={initial_mask_shown}, waiting for scan...")
+
                 num = 0
                 while True:
-                    await asyncio.sleep(3)
+                    time.sleep(3)
                     scanned = False
                     try:
                         mask = page.locator(".mask").first
-                        if await mask.count() > 0:
-                            cls = await mask.get_attribute("class") or ""
-                            if "show" in cls:
-                                print(f"[QR #{account_id}] Scanned at #{num}, mask.show")
+                        if mask.count() > 0:
+                            cls = mask.get_attribute("class") or ""
+                            if "show" in cls and not initial_mask_shown:
+                                print(f"[QR #{account_id}] Scanned at #{num}, mask.show appeared")
                                 scanned = True
+                            elif "show" in cls:
+                                if num % 10 == 0:
+                                    print(f"[QR #{account_id}] mask.show was already present, waiting...")
                         if not scanned:
                             success_img = page.locator(".success-img")
-                            if await success_img.count() > 0 and await success_img.first.is_visible():
+                            if success_img.count() > 0 and success_img.first.is_visible():
                                 print(f"[QR #{account_id}] Scanned at #{num}, success-img")
                                 scanned = True
                     except:
@@ -69,36 +84,47 @@ async def start_qr_login(account_id: int):
                         return
 
                 print(f"[QR #{account_id}] Scan confirmed, waiting 6s...")
-                await asyncio.sleep(6)
+                time.sleep(6)
 
                 print(f"[QR #{account_id}] Opening platform page...")
-                platform_page = await context.new_page()
+                platform_page = context.new_page()
+                logged_in = False
                 try:
-                    await platform_page.goto(
+                    platform_page.goto(
                         "https://channels.weixin.qq.com/platform",
                         wait_until="load",
                         timeout=15000
                     )
-                    await platform_page.wait_for_url(
+                    platform_page.wait_for_url(
                         "https://channels.weixin.qq.com/platform",
                         timeout=10000
                     )
+                    logged_in = "/login" not in platform_page.url
                 except:
                     pass
 
-                await asyncio.sleep(3)
+                if not logged_in:
+                    print(f"[QR #{account_id}] Platform page not reached (still on login), login failed")
+                    platform_page.close()
+                    browser.close()
+                    result_holder["status"] = "error"
+                    result_holder["error"] = "Login not completed, platform page not accessible"
+                    return
+
+                time.sleep(3)
 
                 nickname = ""
                 try:
-                    nickname = await platform_page.locator("h2.finder-nickname").nth(0).inner_text(timeout=10000)
+                    nickname = platform_page.locator("h2.finder-nickname").nth(0).inner_text(timeout=10000)
                 except:
                     pass
                 result_holder["nickname"] = nickname
                 print(f"[QR #{account_id}] Nickname: {nickname}")
 
                 cookie_file = _cookie_path(account_id)
-                await context.storage_state(path=cookie_file)
-                await platform_page.close()
+                context.storage_state(path=cookie_file)
+                platform_page.close()
+                browser.close()
 
                 result_holder["status"] = "success"
                 print(f"[QR #{account_id}] SUCCESS")
@@ -110,7 +136,8 @@ async def start_qr_login(account_id: int):
             traceback.print_exc()
             print(f"[QR #{account_id}] Error: {e}")
 
-    asyncio.create_task(_do())
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, _do)
     return {"qr_image": "", "status": "scan_in_browser"}
 
 async def check_login_status(account_id: int):
@@ -152,7 +179,6 @@ async def check_cookies_visible(account_id: int):
 
     def _run():
         try:
-            from playwright.sync_api import sync_playwright
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=False)
                 context = browser.new_context(storage_state=cf)
@@ -160,7 +186,6 @@ async def check_cookies_visible(account_id: int):
 
                 page.goto("https://channels.weixin.qq.com/platform",
                          wait_until="load", timeout=15000)
-                import time
 
                 try:
                     page.wait_for_url("**/login**", timeout=8000)

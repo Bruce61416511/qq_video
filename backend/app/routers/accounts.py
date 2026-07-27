@@ -5,7 +5,7 @@ from ..database import get_db
 from ..models import Account, AccountStatus
 from ..schemas.schemas import AccountOut
 from ..config import MAX_ACCOUNTS
-from ..services.qrcode_service import start_qr_login, check_login_status, finish_login, validate_cookies, check_cookies_visible, pseudo_finish, pseudo_status, pseudo_validate
+from ..services.qrcode_service import start_qr_login, check_login_status, finish_login, validate_cookies, check_cookies_visible
 import datetime
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
@@ -75,13 +75,6 @@ async def bind_account(account_id: int, db: AsyncSession = Depends(get_db)):
         acc.status = AccountStatus.online
         acc.cookies = result.get("cookies", "")
         acc.channel_name = result.get('nickname', '')
-        acc.last_login = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        await db.commit()
-        return {"ok": True, "status": "online", "name": acc.name}
-    pseudo = pseudo_finish(account_id)
-    if pseudo.get("ok"):
-        acc.status = AccountStatus.online
-        acc.cookies = pseudo.get("cookies", "")
         acc.last_login = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         await db.commit()
         return {"ok": True, "status": "online", "name": acc.name}
