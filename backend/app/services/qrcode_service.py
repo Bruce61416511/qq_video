@@ -93,7 +93,7 @@ async def start_qr_login(account_id: int):
                     print(f"[QR #{account_id}] Waiting 6s for confirm...")
                     await asyncio.sleep(6)
 
-                    # Open platform page, get user info, save cookies
+                    # Open platform page, get user info, save cookies (Matrix-style)
                     print(f"[QR #{account_id}] Opening platform page...")
                     platform_page = await context.new_page()
                     try:
@@ -102,15 +102,21 @@ async def start_qr_login(account_id: int):
                             wait_until="load",
                             timeout=15000
                         )
+                        # Matrix: wait for URL to confirm page loaded
+                        await platform_page.wait_for_url(
+                            "https://channels.weixin.qq.com/platform",
+                            timeout=10000
+                        )
                     except:
                         pass
 
                     await asyncio.sleep(3)
 
+                    # Matrix-style: get nickname using .nth(0)
                     try:
                         nickname = ""
                         try:
-                            nickname = await platform_page.locator("h2.finder-nickname").first.inner_text(timeout=5000)
+                            nickname = await platform_page.locator("h2.finder-nickname").nth(0).inner_text(timeout=10000)
                         except:
                             pass
                         result_holder["nickname"] = nickname
@@ -167,7 +173,7 @@ async def validate_cookies(account_id: int):
 async def check_cookies_visible(account_id: int):
     cf = _cookie_path(account_id)
     if not os.path.exists(cf):
-        return {"valid": False, "message": "\u65e0\u767b\u5f55\u4fe1\u606f"}
+        return {"valid": False, "message": "?????"}
     
     loop = asyncio.get_running_loop()
     result_holder = {}
@@ -179,28 +185,41 @@ async def check_cookies_visible(account_id: int):
                 browser = pw.chromium.launch(headless=False)
                 context = browser.new_context(storage_state=cf)
                 page = context.new_page()
-                page.goto("https://channels.weixin.qq.com/platform", timeout=10000)
+                
+                page.goto("https://channels.weixin.qq.com/platform", 
+                         wait_until="load", timeout=15000)
                 import time
-                time.sleep(3)
-                url = page.url
+                
+                # Use wait_for_url to precisely detect redirect to login
+                try:
+                    page.wait_for_url("**/login**", timeout=8000)
+                    valid = False  # Redirected to login = expired
+                except:
+                    valid = True   # Stayed on platform = valid
+                
                 nickname = ""
-                if "/login" not in url:
+                if valid:
                     try:
                         nickname_el = page.query_selector("h2.finder-nickname")
                         if nickname_el:
                             nickname = nickname_el.inner_text()
                     except:
                         pass
+                    # Refresh cookie storage
                     context.storage_state(path=cf)
+                
                 context.close()
                 browser.close()
-                valid = "/login" not in url
-                result_holder["result"] = {"valid": valid, "nickname": nickname, "message": "\u6709\u6548" if valid else "\u5df2\u8fc7\u671f"}
+                result_holder["result"] = {
+                    "valid": valid, 
+                    "nickname": nickname, 
+                    "message": "??" if valid else "???"
+                }
         except Exception as e:
             result_holder["result"] = {"valid": False, "message": str(e)}
     
     await loop.run_in_executor(None, _run)
-    return result_holder.get("result", {"valid": False, "message": "\u68c0\u67e5\u5931\u8d25"})
+    return result_holder.get("result", {"valid": False, "message": "????"})
 
 def pseudo_status(): return {"status": "waiting"}
 def pseudo_finish(account_id: int): return {"ok": True, "cookies": f"pseudo_{account_id}"}

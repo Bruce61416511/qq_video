@@ -91,9 +91,16 @@ async def bind_account(account_id: int, db: AsyncSession = Depends(get_db)):
 async def check_account_valid(account_id: int, db: AsyncSession = Depends(get_db)):
     acc = await db.get(Account, account_id)
     if not acc:
-        raise HTTPException(404, "账号不存在")
+        raise HTTPException(404, "?????")
     result = await check_cookies_visible(account_id)
     if not result["valid"] and acc.status == AccountStatus.online:
         acc.status = AccountStatus.expired
         await db.commit()
-    return {"account_id": account_id, "valid": result["valid"], "status": acc.status.value, "nickname": result.get("nickname", "")}
+    # Update channel_name if found and currently empty
+    nickname = result.get("nickname", "")
+    if nickname and not acc.channel_name:
+        acc.channel_name = nickname
+        acc.last_login = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        await db.commit()
+    return {"account_id": account_id, "valid": result["valid"], "status": acc.status.value, "nickname": nickname}
+
