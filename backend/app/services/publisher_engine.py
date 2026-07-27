@@ -23,6 +23,14 @@ async def publish_video(
     if not os.path.exists(cookie_file):
         return {"ok": False, "error": "no cookies, please scan QR first"}
 
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None, _publish_sync,
+        account_id, cookie_file, video_path, title, tags, publish_date,
+    )
+
+
+def _publish_sync(account_id, cookie_file, video_path, title, tags, publish_date):
     with sync_playwright() as pw:
         browser = pw.chromium.launch(
             headless=False,

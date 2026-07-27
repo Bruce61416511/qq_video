@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Table, Button, Modal, Input, Space, Popconfirm, App } from 'antd'
 import { PlusOutlined, QrcodeOutlined, ReloadOutlined, SendOutlined, DeleteOutlined, UserOutlined, LoadingOutlined, CheckCircleOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
 import PublishModal from '../components/PublishModal'
@@ -124,7 +124,7 @@ export default function Accounts() {
           </div>
           <div>
             <div style={{ fontWeight: 600 }}>{text}</div>
-            {record.channel_name && <div style={{ fontSize: 12, color: '#8c8c8c' }}>{record.channel_name}</div>}
+            {record.status === 'online' && record.channel_name && <div style={{ fontSize: 12, color: '#8c8c8c' }}>{record.channel_name}</div>}
           </div>
         </Space>
       ),
