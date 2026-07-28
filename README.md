@@ -1,4 +1,4 @@
-﻿# 视频号智能助手
+# 视频号智能助手
 
 AI 驱动的微信视频号矩阵管理系统，支持 AI 分镜策划 → 视频生成 → 配音 → 字幕合成 → 多账号一键发布。
 
@@ -292,6 +292,44 @@ taskkill /PID <PID> /F
 - 换 CogVideo 自部署 → 免费
 - 图生视频模式 → 约 0.5 元/镜
 
+
+## 快速启动
+
+### 1. 前端
+
+```bash
+cd frontend
+# 仅在 node_modules 不存在时安装
+if (-not (Test-Path "node_modules")) { npm install }
+npm run dev
+```
+
+### 2. 后端
+
+```bash
+cd backend
+
+# 创建 venv（仅首次）
+if (-not (Test-Path "venv")) { python -m venv venv }
+
+# 激活虚拟环境
+.\venv\Scripts\Activate.ps1
+
+# 仅在依赖缺失时安装（避免每次重复安装）
+$missing = pip list --format=freeze | ForEach-Object { $_ -replace "==.*", "" }
+$required = Get-Content requirements.txt | Where-Object { $_ -notmatch "^#" } | ForEach-Object { ($_ -split "==")[0] }
+$diff = $required | Where-Object { $_ -notin $missing }
+if ($diff) { pip install -r requirements.txt }
+
+# 启动后端
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+| 服务 | 地址 |
+|------|------|
+| 前端 | http://localhost:5173 |
+| 后端 API | http://localhost:8000 |
+| API 文档 | http://localhost:8000/docs |
 ## API 接口
 
 | 方法 | 路径 | 说明 |
