@@ -1,4 +1,4 @@
-# 视频号智能助手
+﻿# 视频号智能助手
 
 AI 驱动的微信视频号矩阵管理系统，支持 AI 分镜策划 → 视频生成 → 配音 → 字幕合成 → 多账号一键发布。
 
@@ -295,7 +295,17 @@ taskkill /PID <PID> /F
 
 ## 快速启动
 
-### 1. 前端
+### 一键启动（推荐）
+
+```powershell
+.\start.ps1
+```
+
+后端和前端均在后台静默启动，不会弹出多余的 PowerShell 窗口。脚本结束后会自动清理进程。
+
+### 手动启动
+
+**前端**
 
 ```bash
 cd frontend
@@ -304,7 +314,7 @@ if (-not (Test-Path "node_modules")) { npm install }
 npm run dev
 ```
 
-### 2. 后端
+**后端**
 
 ```bash
 cd backend
