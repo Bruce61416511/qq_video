@@ -1,18 +1,34 @@
-﻿node_modules/
-dist/
+﻿# Dependencies
+node_modules/
+backend/venv/
+TrendRadar-master/.venv/
 __pycache__/
 *.pyc
-*.db
-cookies/
-uploads/
-matrix_repo/
-*.mp4
-*.png
-*.jpg
-.env
 
-# 二进制工具
-ffmpeg-8.1.2-essentials_build.zip
-# TrendRadar 虚拟环境
-TrendRadar-master/.venv/
+# Generated output (regenerated on each crawl)
 TrendRadar-master/output/
+TrendRadar-master/index.html
+
+# Backend runtime
+backend/cookies/
+backend/screenshots/
+backend/uploads/
+backend/data.db
+
+# Env & secrets
+.env
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+*.bat
+s.py
+start_be.py
+# TrendRadar upstream assets
+TrendRadar-master/_image/
+# Reference & tools
+matrix_repo/
+ffmpeg*.zip

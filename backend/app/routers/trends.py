@@ -1,4 +1,4 @@
-﻿"""热点洞察 API 路由。"""
+"""热点洞察 API 路由。"""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -201,6 +201,61 @@ async def topic_status():
 async def topic_report():
     """返回选题 HTML 报告。"""
     return HTMLResponse(topic_to_video.get_html())
+
+
+# ── 配置文件管理 ──
+
+CONFIG_FILES = {
+    "ai_interests": "ai_interests.txt",
+    "frequency_words": "frequency_words.txt",
+    "ai_analysis_prompt": "ai_analysis_prompt.txt",
+    "topic_to_video_prompt": "topic_to_video_prompt.txt",
+}
+
+@router.get("/config/files")
+async def list_config_files():
+    """列出所有可编辑的配置文件及路径。"""
+    config_dir = trend_service.TRENDRADAR_DIR / "config"
+    files = []
+    for key, filename in CONFIG_FILES.items():
+        path = config_dir / filename
+        exists = path.exists()
+        size = path.stat().st_size if exists else 0
+        files.append({
+            "key": key,
+            "filename": filename,
+            "path": str(path.relative_to(trend_service.TRENDRADAR_DIR)),
+            "exists": exists,
+            "size": size,
+            "description": {
+                "ai_interests": "AI 兴趣方向，控制 AI 过滤的匹配范围",
+                "frequency_words": "关键词分组，关键词模式下使用",
+                "ai_analysis_prompt": "AI 热点分析的提示词（情报分析视角）",
+                "topic_to_video_prompt": "选题生成提示词（热搜→视频选题）",
+            }.get(key, ""),
+        })
+    return {"files": files}
+
+@router.get("/config/files/{key}")
+async def get_config_file(key: str):
+    """读取指定配置文件内容。"""
+    if key not in CONFIG_FILES:
+        raise HTTPException(404, f"未知配置文件: {key}")
+    path = trend_service.TRENDRADAR_DIR / "config" / CONFIG_FILES[key]
+    if not path.exists():
+        return {"key": key, "content": "", "exists": False}
+    return {"key": key, "content": path.read_text(encoding="utf-8"), "exists": True}
+
+@router.put("/config/files/{key}")
+async def save_config_file(key: str, data: dict):
+    """保存指定配置文件内容。"""
+    if key not in CONFIG_FILES:
+        raise HTTPException(404, f"未知配置文件: {key}")
+    content = data.get("content", "")
+    path = trend_service.TRENDRADAR_DIR / "config" / CONFIG_FILES[key]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return {"ok": True, "key": key}
 
 # ── AI 分析结果 ──
 
