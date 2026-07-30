@@ -178,6 +178,30 @@ async def set_filter_method(data: dict):
     trend_service.set_filter_method(method)
     return {"ok": True, "method": method}
 
+
+# ── 选题生成 ──
+
+from ..services import topic_to_video
+
+@router.post("/topic-to-video/generate")
+async def generate_topics():
+    """触发选题生成（后台运行）。"""
+    ok = topic_to_video.generate_async()
+    if not ok:
+        return {"ok": False, "error": "生成进行中，请稍后"}
+    return {"ok": True, "message": "选题生成已启动，约需10-30秒"}
+
+@router.get("/topic-to-video/status")
+async def topic_status():
+    """查询选题生成状态。"""
+    s = topic_to_video.get_status()
+    return {"running": s["running"], "result": s["result"]}
+
+@router.get("/topic-to-video/report", response_class=HTMLResponse)
+async def topic_report():
+    """返回选题 HTML 报告。"""
+    return HTMLResponse(topic_to_video.get_html())
+
 # ── AI 分析结果 ──
 
 @router.get("/ai-analysis")

@@ -64,6 +64,12 @@ export const trendsApi = {
   getReport: () => `${BASE}/trends/report`,
   getMethod: () => request('/trends/config/method'),
   setMethod: (method) => request('/trends/config/method', { method: 'PUT', body: JSON.stringify({ method }) }),
+  getTopicReport: () => `${BASE}/trends/topic-to-video/report`,
+  generateTopics: () => request('/trends/topic-to-video/generate', { method: 'POST' }),
+  topicStatus: () => request('/trends/topic-to-video/status'),
+  getReport: () => `${BASE}/trends/report`,
+  getMethod: () => request('/trends/config/method'),
+  setMethod: (method) => request('/trends/config/method', { method: 'PUT', body: JSON.stringify({ method }) }),
   list: (status, limit, offset) => {
     const params = new URLSearchParams()
     if (status) params.append('status', status)

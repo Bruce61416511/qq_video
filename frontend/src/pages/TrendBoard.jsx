@@ -3,12 +3,11 @@ import { Tabs, Card, Input, Button, Space, App, Row, Col, Modal, Switch, Tag } f
 import {
   ReloadOutlined, ThunderboltOutlined, SettingOutlined,
   PlusOutlined, DeleteOutlined, EditOutlined, SearchOutlined,
-  RobotOutlined, ExportOutlined,
+  RobotOutlined, VideoCameraOutlined, ExportOutlined,
 } from "@ant-design/icons"
 import { trendsApi } from "../services/api"
 
 export default function TrendBoard() {
-  const [loading, setLoading] = useState(false)
   const [crawling, setCrawling] = useState(false)
   const [groups, setGroups] = useState({})
   const [interestsContent, setInterestsContent] = useState("")
@@ -18,8 +17,9 @@ export default function TrendBoard() {
   const [newGroupName, setNewGroupName] = useState("")
   const [filterMethod, setFilterMethod] = useState("ai")
   const [reportKey, setReportKey] = useState(0)
+  const [topicKey, setTopicKey] = useState(0)
+  const [topicGenerating, setTopicGenerating] = useState(false)
   const [activeTab, setActiveTab] = useState("config")
-  const iframeRef = useRef(null)
   const { message } = App.useApp()
 
   const loadConfig = async () => {
@@ -47,8 +47,10 @@ export default function TrendBoard() {
         const st = await trendsApi.crawlStatus(); n++
         if (!st.running) {
           if (st.result && st.result.ok) {
-            message.success("采集完成")
-            setReportKey(k => k + 1) // 刷新 iframe
+            message.success("采集完成，正在生成选题...")
+            setReportKey(k => k + 1)
+            // Auto-generate topics
+            await generateTopics()
           } else {
             message.error("采集失败: " + (st.result ? st.result.error : "未知错误"))
           }
@@ -57,6 +59,30 @@ export default function TrendBoard() {
       }
     } catch (e) { message.error("采集失败: " + e.message) }
     finally { setCrawling(false) }
+  }
+
+  const generateTopics = async () => {
+    setTopicGenerating(true)
+    try {
+      const start = await trendsApi.generateTopics()
+      if (!start.ok) { message.warning(start.error || "无法启动选题生成"); setTopicGenerating(false); return }
+      let n = 0
+      while (n < 30) {
+        await new Promise(r => setTimeout(r, 2000))
+        const st = await trendsApi.topicStatus(); n++
+        if (!st.running) {
+          if (st.result && st.result.ok) {
+            message.success(`选题生成完成，共 ${st.result.count} 个选题`)
+            setTopicKey(k => k + 1)
+          } else {
+            message.warning("选题生成结束: " + (st.result ? st.result.message || st.result.error : ""))
+            setTopicKey(k => k + 1)
+          }
+          break
+        }
+      }
+    } catch (e) { message.error(e.message) }
+    finally { setTopicGenerating(false) }
   }
 
   const handleMethodToggle = async (checked) => {
@@ -88,7 +114,7 @@ export default function TrendBoard() {
     setNewGroupName(""); setAddModalOpen(false)
   }
   const confirmDeleteGroup = (name) => {
-    Modal.confirm({ title: "删除分组", content: "确定删除 \"" + name + "\" 分组？", okText: "删除", okType: "danger",
+    Modal.confirm({ title: "删除分组", content: '确定删除 "' + name + '" 分组？', okText: "删除", okType: "danger",
       onOk: () => setGroups(prev => { const n = { ...prev }; delete n[name]; return n }) })
   }
   const renameGroup = (oldName) => {
@@ -152,27 +178,48 @@ export default function TrendBoard() {
       ),
     },
     {
-      key: "report", label: "检索结果", icon: <SearchOutlined />,
+      key: "report", label: "热点报告", icon: <SearchOutlined />,
       children: (
         <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 180px)" }}>
           <div style={{ marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ color: "#888" }}>
-              TrendRadar 报告 · 
+              TrendRadar 报告 ·
               <Tag color={filterMethod === "ai" ? "blue" : "orange"} style={{ marginLeft: 8 }}>
                 {filterMethod === "ai" ? "AI 检索" : "关键词检索"}
               </Tag>
             </span>
             <Space>
               <Button size="small" icon={<ReloadOutlined />} onClick={() => setReportKey(k => k + 1)}>刷新报告</Button>
-              <Button size="small" icon={<ExportOutlined />} onClick={() => window.open(trendsApi.getReport(), '_blank')}>新窗口打开</Button>
+              <Button size="small" icon={<ExportOutlined />} onClick={() => window.open(trendsApi.getReport(), "_blank")}>新窗口打开</Button>
             </Space>
           </div>
           <iframe
-            ref={iframeRef}
             key={reportKey}
             src={trendsApi.getReport()}
             style={{ flex: 1, width: "100%", border: "1px solid #e8e8e8", borderRadius: 8, background: "#fff" }}
             title="TrendRadar 报告"
+          />
+        </div>
+      ),
+    },
+    {
+      key: "topics", label: "视频选题", icon: <VideoCameraOutlined />,
+      children: (
+        <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 180px)" }}>
+          <div style={{ marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ color: "#888" }}>
+              🎬 热搜 → 视频选题 · 自动提取 Top 5 高相关热搜生成
+            </span>
+            <Space>
+              <Button size="small" icon={<ReloadOutlined />} onClick={generateTopics} loading={topicGenerating}>重新生成</Button>
+              <Button size="small" icon={<ExportOutlined />} onClick={() => window.open(trendsApi.getTopicReport(), "_blank")}>新窗口打开</Button>
+            </Space>
+          </div>
+          <iframe
+            key={topicKey}
+            src={trendsApi.getTopicReport()}
+            style={{ flex: 1, width: "100%", border: "1px solid #e8e8e8", borderRadius: 8, background: "#fff" }}
+            title="视频选题"
           />
         </div>
       ),
