@@ -284,8 +284,39 @@ export default function TextToVideo() {
 
   // ---------- Step 2: Edit shots ----------
   const renderStep2 = () => (
-    <Card title={<span><VideoCameraOutlined style={{ marginRight: 6 }} />分镜方案 · 点击编辑</span>}
-      extra={
+    <>
+      {/* 选题摘要 */}
+      <Card size="small" style={{ marginBottom: 16, background: '#f6ffed', border: '1px solid #b7eb8f' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>📋 原始选题</span>
+          <Button size="small" type="link" onClick={() => setCurrent(0)} icon={<ArrowLeftOutlined />}>返回修改</Button>
+        </div>
+        {selectedTopic ? (
+          <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.8 }}>
+            <div><strong>标题：</strong>{selectedTopic.video_topic}</div>
+            {selectedTopic.angle && <div><strong>角度：</strong>{selectedTopic.angle}</div>}
+            {selectedTopic.hook && <div style={{ color: '#e67e22' }}><strong>⚡ 黄金3秒：</strong>{selectedTopic.hook}</div>}
+            {selectedTopic.content_outline?.length > 0 && (
+              <div><strong>📝 内容要点：</strong>
+                <ol style={{ margin: '4px 0 0 16px', paddingLeft: 0 }}>
+                  {selectedTopic.content_outline.map((p, i) => <li key={i}>{p}</li>)}
+                </ol>
+              </div>
+            )}
+            {selectedTopic.target_emotion && <div><strong>🎭 目标情绪：</strong>{selectedTopic.target_emotion}</div>}
+            {selectedTopic.product_link && <div><strong>🔗 产品关联：</strong>{selectedTopic.product_link}</div>}
+            <div><strong>⏱ 总时长：</strong>{selectedTopic.duration || 30}s</div>
+          </div>
+        ) : (
+          <div style={{ marginTop: 8, fontSize: 13 }}>
+            <div><strong>主题：</strong>{topic}</div>
+            <div><strong>分镜数量：</strong>{shotCount} 镜 | <strong>每镜时长：</strong>{shotDuration}s</div>
+          </div>
+        )}
+      </Card>
+
+      <Card title={<span><VideoCameraOutlined style={{ marginRight: 6 }} />分镜方案 · 点击编辑</span>}
+        extra={
         <Space>
           <Button size="small" icon={<ReloadOutlined />} loading={shotsLoading} onClick={regenerateAll}>全部重新生成</Button>
           <Button size="small" onClick={() => setCurrent(0)} icon={<ArrowLeftOutlined />}>返回修改主题</Button>
@@ -329,6 +360,7 @@ export default function TextToVideo() {
         </Popconfirm>
       </div>
     </Card>
+    </>
   )
 
   // For step 3: poll for status
