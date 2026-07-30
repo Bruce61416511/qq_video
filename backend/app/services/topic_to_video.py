@@ -25,7 +25,7 @@ def _get_report_titles() -> set:
     return titles
 
 
-def _get_top_5_ai_results() -> list[dict]:
+def _get_all_report_ai_results() -> list[dict]:
     db_path = TRENDRADAR_DIR / "output" / "news" / "2026-07-30.db"
     if not db_path.exists():
         news_dir = TRENDRADAR_DIR / "output" / "news"
@@ -45,7 +45,7 @@ def _get_top_5_ai_results() -> list[dict]:
           
         GROUP BY n.title
         ORDER BY score DESC
-        LIMIT 5
+        
     """).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -196,7 +196,7 @@ def generate():
     _status["result"] = None
     _status["html"] = None
     try:
-        all_results = _get_top_5_ai_results()
+        all_results = _get_all_report_ai_results()
         report_titles = _get_report_titles()
         results = [r for r in all_results if r['title'] in report_titles]
         if not report_titles:
