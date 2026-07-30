@@ -83,6 +83,150 @@ SYSTEM_PROMPT = """你是一个资深短视频策划导演，专精食品、健�
 ]"""
 
 
+
+TOPIC_SHOT_PROMPT = """你是一个短视频分镜导演。根据给定的选题结构生成分镜脚本。
+
+## 分镜规则
+- 镜1（{hook_dur}s）：直接使用黄金3秒文案作为配音，生成对应的画面提示词
+- 中间N镜：每个内容要点一个分镜，画面+配音
+- 最后一镜（{end_dur}s）：总结收尾 + 情绪引导
+
+## 输出格式
+返回 JSON 数组，每个元素包含 scene_prompt 和 voice_script：
+[
+  {{"scene_prompt": "画面描述...", "voice_script": "配音文案..."}},
+  ...
+]
+
+## 要求
+- scene_prompt 以【Xs】开头标注时长
+- 画风：暖色调、生活化、接地气
+- 配音：口语化、像朋友聊天
+"""
+
+async def generate_shot_plan_from_topic(
+    video_topic: str,
+    angle: str,
+    hook: str,
+    content_outline: list,
+    target_emotion: str,
+    product_link: str,
+    total_duration: int = 45,
+) -> list[dict]:
+    """从选题结构化数据生成分镜。"""
+    import os, json, re
+    from openai import AsyncOpenAI
+
+    outline_count = len(content_outline) if content_outline else 0
+    if outline_count == 0:
+        outline_count = 3
+
+    shot_count = outline_count + 2  # 开头 + N个要点 + 结尾
+    base_dur = max(3, total_duration // shot_count)
+    hook_dur = min(base_dur, 5)  # 黄金3秒不超过5秒
+    end_dur = base_dur
+    mid_dur = (total_duration - hook_dur - end_dur) // outline_count if outline_count > 0 else base_dur
+
+    prompt = TOPIC_SHOT_PROMPT.format(hook_dur=hook_dur, end_dur=end_dur)
+
+    outline_text = "\n".join(f"{i+1}. {o}" for i, o in enumerate(content_outline)) if content_outline else "无"
+    user_content = f"""视频选题：{video_topic}
+切入角度：{angle}
+黄金3秒：{hook}
+目标情绪：{target_emotion}
+产品关联：{product_link}
+总时长：{total_duration}s
+
+内容要点：
+{outline_text}
+
+分镜规划：共{shot_count}镜，镜1({hook_dur}s)+中间{outline_count}镜(各{mid_dur}s)+结尾({end_dur}s)
+"""
+
+    api_key = _get_setting("llm_api_key")
+    if not api_key:
+        return _fallback_topic_shots(hook, content_outline, hook_dur, mid_dur, end_dur)
+
+    model = _get_setting("llm_model", "qwen-plus")
+    base_url = _get_setting("llm_base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+
+    try:
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=0.7,
+            max_tokens=2000,
+        )
+        content = response.choices[0].message.content
+        json_match = re.search(r'\[[\s\S]*\]', content)
+        if json_match:
+            shots = json.loads(json_match.group())
+            for i, s in enumerate(shots):
+                if i == 0:
+                    s["duration"] = str(hook_dur)
+                elif i == len(shots) - 1:
+                    s["duration"] = str(end_dur)
+                else:
+                    s["duration"] = str(mid_dur)
+            return shots
+    except Exception as e:
+        pass
+
+    return _fallback_topic_shots(hook, content_outline, hook_dur, mid_dur, end_dur)
+
+
+def _fallback_topic_shots(hook, outline, hook_dur, mid_dur, end_dur):
+    """LLM 不可用时的降级模板。"""
+    shots = []
+    # 镜1：黄金3秒
+    shots.append({
+        "scene_prompt": f"【{hook_dur}s】主持人正面中景，真诚注视镜头，暖色自然光，背景虚化居家环境",
+        "voice_script": hook,
+        "duration": str(hook_dur),
+    })
+    # 中间镜
+    for i, point in enumerate(outline or []):
+        shots.append({
+            "scene_prompt": f"【{mid_dur}s】要点{i+1}相关画面，字幕叠加关键词，暖色调，生活化场景",
+            "voice_script": point,
+            "duration": str(mid_dur),
+        })
+    # 结尾
+    shots.append({
+        "scene_prompt": f"【{end_dur}s】主持人微笑中景回归，暖光渐亮，字幕弹出关注引导",
+        "voice_script": "关注我，每天一个健康小知识。",
+        "duration": str(end_dur),
+    })
+    return shots
+
+
+def _get_setting(key: str, default: str = "") -> str:
+    """从 settings 表同步读取配置。"""
+    try:
+        import asyncio
+        from ..database import async_session
+        from ..models.models import Setting
+        from sqlalchemy import select as _select
+
+        async def _get():
+            async with async_session() as db:
+                r = await db.execute(_select(Setting).where(Setting.key == key))
+                s = r.scalar_one_or_none()
+                return s.value if s else default
+
+        try:
+            loop = asyncio.get_running_loop()
+            return loop.run_until_complete(asyncio.ensure_future(_get()))
+        except RuntimeError:
+            return asyncio.run(_get())
+    except Exception:
+        return default
+
 async def generate_shot_plan(topic: str, shot_count: int, shot_duration: str) -> list[dict]:
     """Call LLM to generate shot plan from topic.
 

@@ -3,7 +3,7 @@ import uuid
 import asyncio
 import traceback
 from datetime import datetime
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Body, Depends, UploadFile, File, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from ..database import get_db, async_session
@@ -74,6 +74,22 @@ async def get_shots(media_id: int, db: AsyncSession = Depends(get_db)):
     )
     return result.scalars().all()
 
+
+
+@router.post("/generate-shots-from-topic")
+async def generate_shots_from_topic(data: dict = Body(...)):
+    """从选题结构化数据生成分镜方案。"""
+    from ..services.llm_service import generate_shot_plan_from_topic
+    shots = await generate_shot_plan_from_topic(
+        video_topic=data.get("video_topic", ""),
+        angle=data.get("angle", ""),
+        hook=data.get("hook", ""),
+        content_outline=data.get("content_outline", []),
+        target_emotion=data.get("target_emotion", ""),
+        product_link=data.get("product_link", ""),
+        total_duration=data.get("duration", 45),
+    )
+    return {"shots": shots}
 
 @router.post("/generate-shots")
 async def generate_shots(req: GenerateShotsRequest):

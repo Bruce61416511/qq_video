@@ -39,6 +39,7 @@ export default function TextToVideo() {
   // Video topics from trends
   const [videoTopics, setVideoTopics] = useState([])
   const [selectedTopicId, setSelectedTopicId] = useState(null)
+  const [selectedTopic, setSelectedTopic] = useState(null)
 
   // Load video topics on mount
   useEffect(() => {
@@ -59,23 +60,20 @@ export default function TextToVideo() {
 
   // Handle topic selection from dropdown
   const handleTopicSelect = (idx) => {
+    if (idx === undefined || idx === null) {
+      setSelectedTopicId(null)
+      setSelectedTopic(null)
+      return
+    }
     const t = videoTopics[idx]
-    if (!t) return
+    if (!t) { setSelectedTopicId(null); setSelectedTopic(null); return }
     setSelectedTopicId(idx)
-
-    const parts = [
-      `视频选题：${t.video_topic || ''}`,
-      `切入角度：${t.angle || ''}`,
-      t.hook ? `黄金3秒开头：${t.hook}` : '',
-      t.content_outline && t.content_outline.length > 0
-        ? `内容要点：\n${t.content_outline.map((p, i) => `  ${i + 1}. ${p}`).join('\n')}`
-        : '',
-      t.target_emotion ? `目标情绪：${t.target_emotion}` : '',
-      t.product_link ? `产品关联：${t.product_link}` : '',
-      `时长建议：${t.duration || 30}秒`,
-    ].filter(Boolean)
-    setTopic(parts.join('\n'))
-    if (t.duration) setShotDuration(String(Math.max(3, Math.floor((t.duration || 30) / (t.content_outline?.length || 3)))))
+    setSelectedTopic(t)
+    // Auto-calculate
+    const outlineLen = t.content_outline?.length || 3
+    const totalDur = t.duration || 45
+    setShotCount(outlineLen + 2)
+    setShotDuration(String(Math.max(3, Math.floor(totalDur / (outlineLen + 2)))))
   }
 
   // Step 2 - shots
@@ -89,6 +87,20 @@ export default function TextToVideo() {
 
   // Generate shot plan
   const handleGenerateShots = useCallback(async () => {
+    if (selectedTopic) {
+      setShotsLoading(true)
+      try {
+        const data = await mediaApi.generateShotsFromTopic(selectedTopic)
+        setShots(data.shots || [])
+        setCurrent(1)
+        message.success(`已生成 ${data.shots.length} 个分镜方案`)
+      } catch (e) {
+        message.error('生成分镜失败: ' + e.message)
+      } finally {
+        setShotsLoading(false)
+      }
+      return
+    }
     if (!topic.trim()) { message.warning('请输入视频主题'); return }
     setShotsLoading(true)
     try {
@@ -101,7 +113,7 @@ export default function TextToVideo() {
     } finally {
       setShotsLoading(false)
     }
-  }, [topic, shotCount, shotDuration, message])
+  }, [topic, shotCount, shotDuration, selectedTopic, message])
 
   // Update a shot field
   const updateShot = (index, field, value) => {
@@ -163,15 +175,15 @@ export default function TextToVideo() {
   // ---------- Step 1: Input ----------
   const renderStep1 = () => (
     <Card>
-      {/* Video topic selector */}
       {videoTopics.length > 0 && (
         <div style={{ marginBottom: 16 }}>
           <span style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 8 }}>
             📋 从今日选题中选择
           </span>
           <Select
-            placeholder="选择一个选题自动填充..."
+            placeholder="手动输入 或 选择一个选题..."
             style={{ width: '100%' }}
+            allowClear
             value={selectedTopicId}
             onChange={handleTopicSelect}
             options={videoTopics.map((t, i) => ({
@@ -182,48 +194,91 @@ export default function TextToVideo() {
         </div>
       )}
 
-      <div style={{ marginBottom: 20 }}>
-        <span style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 8 }}>
-          视频主题 <span style={{ color: '#ff4d4f' }}>*</span>
-        </span>
-        <TextArea
-          value={topic}
-          onChange={e => setTopic(e.target.value)}
-          placeholder={'从以下四个方面描述你想制作的视频：\n1. 主题方向：要讲什么\n2. 目标人群：给谁看\n3. 风格调性：暖色调/科技感/电影感/治愈风\n4. 核心卖点：最想突出的 1-2 个信息\n\n例如：\n益生菌对肠道健康的好处，面向25-35岁上班族女性，暖色调+食材特写+轻快节奏，突出100亿活菌数据和肠道菌群对比'}
-          rows={5}
-          maxLength={500}
-          showCount
-        />
-      </div>
+      {selectedTopic ? (
+        <div>
+          <Card size="small" style={{ background: '#f6ffed', border: '1px solid #b7eb8f', marginBottom: 16 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>✅ 选题确认</div>
+            <p style={{ margin: '4px 0', fontSize: 13 }}><strong>标题：</strong>{selectedTopic.video_topic}</p>
+            {selectedTopic.angle && <p style={{ margin: '4px 0', fontSize: 13 }}><strong>角度：</strong>{selectedTopic.angle}</p>}
+            {selectedTopic.hook && <p style={{ margin: '4px 0', fontSize: 13, color: '#e67e22' }}><strong>⚡ 黄金3秒：</strong>{selectedTopic.hook}</p>}
+            {selectedTopic.content_outline?.length > 0 && (
+              <div style={{ margin: '4px 0', fontSize: 13 }}>
+                <strong>📝 内容结构：</strong>
+                <ol style={{ margin: '4px 0 0 16px' }}>
+                  {selectedTopic.content_outline.map((p, i) => <li key={i}>{p}</li>)}
+                </ol>
+              </div>
+            )}
+            <div style={{ marginTop: 8, fontSize: 13, color: '#888' }}>
+              ⏱ 总长 {selectedTopic.duration || 45}s · 自动拆 {shotCount} 镜 · 每镜 {shotDuration}s
+            </div>
+          </Card>
 
-      <Space size="middle" wrap>
-        <div>
-          <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>画面比例</span>
-          <Select value={size} onChange={setSize} options={SIZE_OPTIONS} style={{ width: 120 }} />
-        </div>
-        <div>
-          <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>分辨率</span>
-          <Select value={resolution} onChange={setResolution} options={RESOLUTION_OPTIONS} style={{ width: 100 }} />
-        </div>
-        <div>
-          <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>分镜数量</span>
-          <Select value={shotCount} onChange={setShotCount}
-            options={[1,2,3,4,5,6,7,8,9,10].map(n => ({ value: n, label: `${n} 镜` }))}
-            style={{ width: 80 }} />
-        </div>
-        <div>
-          <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>每镜时长</span>
-          <Select value={shotDuration} onChange={setShotDuration} options={DURATION_OPTIONS} style={{ width: 80 }} />
-        </div>
-      </Space>
+          <Space size="middle" wrap>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>画面比例</span>
+              <Select value={size} onChange={setSize} options={SIZE_OPTIONS} style={{ width: 120 }} />
+            </div>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>分辨率</span>
+              <Select value={resolution} onChange={setResolution} options={RESOLUTION_OPTIONS} style={{ width: 100 }} />
+            </div>
+          </Space>
 
-      <div style={{ marginTop: 24 }}>
-        <Button type="primary" size="large" block loading={shotsLoading}
-          onClick={handleGenerateShots}
-          icon={<ThunderboltOutlined />}>
-          生成分镜方案
-        </Button>
-      </div>
+          <div style={{ marginTop: 24 }}>
+            <Button type="primary" size="large" block loading={shotsLoading}
+              onClick={handleGenerateShots}
+              icon={<ThunderboltOutlined />}>
+              🎬 一键生成分镜方案
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ marginBottom: 20 }}>
+            <span style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 8 }}>
+              视频主题 <span style={{ color: '#ff4d4f' }}>*</span>
+            </span>
+            <TextArea
+              value={topic}
+              onChange={e => setTopic(e.target.value)}
+              placeholder={'从以下四个方面描述你想制作的视频：\n1. 主题方向：要讲什么\n2. 目标人群：给谁看\n3. 风格调性：暖色调/科技感/电影感/治愈风\n4. 核心卖点：最想突出的 1-2 个信息'}
+              rows={5}
+              maxLength={500}
+              showCount
+            />
+          </div>
+
+          <Space size="middle" wrap>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>画面比例</span>
+              <Select value={size} onChange={setSize} options={SIZE_OPTIONS} style={{ width: 120 }} />
+            </div>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>分辨率</span>
+              <Select value={resolution} onChange={setResolution} options={RESOLUTION_OPTIONS} style={{ width: 100 }} />
+            </div>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>分镜数量</span>
+              <Select value={shotCount} onChange={setShotCount}
+                options={[1,2,3,4,5,6,7,8,9,10].map(n => ({ value: n, label: `${n} 镜` }))}
+                style={{ width: 80 }} />
+            </div>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>每镜时长</span>
+              <Select value={shotDuration} onChange={setShotDuration} options={DURATION_OPTIONS} style={{ width: 80 }} />
+            </div>
+          </Space>
+
+          <div style={{ marginTop: 24 }}>
+            <Button type="primary" size="large" block loading={shotsLoading}
+              onClick={handleGenerateShots}
+              icon={<ThunderboltOutlined />}>
+              生成分镜方案
+            </Button>
+          </div>
+        </>
+      )}
     </Card>
   )
 
@@ -410,14 +465,13 @@ export default function TextToVideo() {
       {current === 1 && renderStep2()}
       {current === 2 && renderStep3()}
 
-      {/* Tips */}
       {current === 0 && (
         <Card size="small" style={{ marginTop: 20 }}>
-          <span style={{ fontWeight: 600, fontSize: 13 }}>💡 文案提示</span>
+          <span style={{ fontWeight: 600, fontSize: 13 }}>💡 提示</span>
           <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12, color: '#8c8c8c', lineHeight: 2 }}>
-            <li>从主题、人群、风格、卖点四个维度描述，AI 拆分的分镜最精准</li>
-            <li>卖点建议包含具体数据（如：100亿活菌、提高30%），LLM 会在分镜中自动融入对比可视化</li>
-            <li>生成的视频会自动存入素材库，可在素材库中选择发布</li>
+            <li>选择今日选题自动拆镜，或手动输入主题自由创作</li>
+            <li>Step 2 可逐镜编辑画面提示词和配音文案</li>
+            <li>生成的视频会自动存入素材库</li>
           </ul>
         </Card>
       )}

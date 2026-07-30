@@ -26,6 +26,7 @@ export const accountsApi = {
 export const mediaApi = {
   list: () => request('/media'),
   delete: (id) => request('/media/' + id, { method: 'DELETE' }),
+  generateShotsFromTopic: (topicData) => request('/media/generate-shots-from-topic', { method: 'POST', body: JSON.stringify(topicData) }),
   generateShots: (topic, shotCount, shotDuration) => request('/media/generate-shots', {
     method: 'POST',
     body: JSON.stringify({ topic, shot_count: shotCount, shot_duration: shotDuration }),

@@ -9,12 +9,13 @@ from pathlib import Path
 TRENDRADAR_DIR = Path(__file__).parent.parent.parent.parent / "TrendRadar-master"
 PROMPT_FILE = TRENDRADAR_DIR / "config" / "topic_to_video_prompt.txt"
 OUTPUT_FILE = TRENDRADAR_DIR / "output" / "topic_to_video.html"
+TOPIC_JSON_FILE = TRENDRADAR_DIR / "output" / "topic_to_video.json"
 
 _status = {"running": False, "result": None, "html": None, "generated_at": None}
+_last_topics = []
 
 
 def _get_report_titles() -> set:
-    """从报告 HTML 提取当前在榜的所有标题。"""
     index_path = TRENDRADAR_DIR / "output" / "index.html"
     if not index_path.exists():
         return set()
@@ -42,10 +43,8 @@ def _get_all_report_ai_results() -> list[dict]:
         FROM ai_filter_results r
         JOIN news_items n ON r.news_item_id = n.id
         WHERE r.status = 'active'
-          
         GROUP BY n.title
         ORDER BY score DESC
-        
     """).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -81,8 +80,7 @@ def _get_setting(key: str, default: str = "") -> str:
                 return s.value if s else default
 
         try:
-            loop = asyncio.get_running_loop()
-            return loop.run_until_complete(asyncio.ensure_future(_get()))
+            return asyncio.run(_get())
         except RuntimeError:
             return asyncio.run(_get())
     except Exception:
@@ -93,7 +91,7 @@ def _generate_html(topics: list[dict], error: str = None, gen_time: str = None) 
     if error:
         return f"""<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
 body{{font-family:-apple-system,sans-serif;padding:40px;text-align:center;color:#999}}
-</style></head><body><h2>zx 生成失败</h2><p>{error}</p></body></html>"""
+</style></head><body><h2>生成失败</h2><p>{error}</p></body></html>"""
 
     if not topics:
         ts = f'<div class="gen-time">上次生成：{gen_time or "暂无"}</div>' if gen_time else ""
@@ -167,31 +165,8 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
 </html>"""
 
 
-_last_topics = []
-
-
-# Cache last parsed topics
-_last_topics = []
-
-def get_topic_data():
-    """返回最新选题的 JSON 数据。"""
-    global _last_topics
-    if _last_topics:
-        return {"topics": _last_topics, "generated_at": _status.get("generated_at")}
-    # Fallback: parse from saved HTML
-    if OUTPUT_FILE.exists():
-        html = OUTPUT_FILE.read_text(encoding="utf-8")
-        m = re.search(r'var _TOPICS = (\[.*?\]);', html)
-        if m:
-            try:
-                _last_topics = json.loads(m.group(1))
-                return {"topics": _last_topics, "generated_at": _status.get("generated_at")}
-            except:
-                pass
-    return {"topics": [], "generated_at": None}
-
 def generate():
-    global _status
+    global _status, _last_topics
     _status["running"] = True
     _status["result"] = None
     _status["html"] = None
@@ -200,11 +175,10 @@ def generate():
         report_titles = _get_report_titles()
         results = [r for r in all_results if r['title'] in report_titles]
         if not report_titles:
-            # Report not generated yet, use all results
             results = all_results
         if not results:
             _status["html"] = _generate_html([], gen_time=_status.get("generated_at"))
-            _status["result"] = {"ok": True, "count": 0, "message": "没有 AI 过滤结果"}
+            _status["result"] = {"ok": True, "count": 0, "message": "没有匹配的热点"}
             return
 
         prompt_template = _load_prompt()
@@ -250,13 +224,16 @@ def generate():
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         _status["generated_at"] = now
+        _last_topics = topics
+
+        # Save JSON for persistence
+        TOPIC_JSON_FILE.write_text(json.dumps({"topics": topics, "generated_at": now}, ensure_ascii=False), encoding="utf-8")
+
         html = _generate_html(topics, gen_time=now)
         OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
         OUTPUT_FILE.write_text(html, encoding="utf-8")
         _status["html"] = html
-        global _last_topics
-        _last_topics = topics
-
+        _status["result"] = {"ok": True, "count": len(topics)}
 
     except Exception as e:
         _status["html"] = _generate_html([], error=str(e))
@@ -283,3 +260,17 @@ def get_html():
     if OUTPUT_FILE.exists():
         return OUTPUT_FILE.read_text(encoding="utf-8")
     return _generate_html([])
+
+
+def get_topic_data():
+    global _last_topics
+    if _last_topics:
+        return {"topics": _last_topics, "generated_at": _status.get("generated_at")}
+    if TOPIC_JSON_FILE.exists():
+        try:
+            data = json.loads(TOPIC_JSON_FILE.read_text(encoding="utf-8"))
+            _last_topics = data.get("topics", [])
+            return {"topics": _last_topics, "generated_at": data.get("generated_at")}
+        except:
+            pass
+    return {"topics": [], "generated_at": None}
