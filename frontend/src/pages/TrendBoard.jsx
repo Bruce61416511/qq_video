@@ -1,56 +1,39 @@
-﻿import { useState, useEffect } from "react"
-import { Tabs, Card, Input, Button, Table, Tag, Space, App, Row, Col, Modal, Switch } from "antd"
+import { useState, useEffect, useRef } from "react"
+import { Tabs, Card, Input, Button, Space, App, Row, Col, Modal, Switch, Tag } from "antd"
 import {
-  ReloadOutlined, StarOutlined, StarFilled, EyeInvisibleOutlined,
-  ThunderboltOutlined, SettingOutlined, PlusOutlined, DeleteOutlined,
-  EditOutlined, RobotOutlined, SearchOutlined,
+  ReloadOutlined, ThunderboltOutlined, SettingOutlined,
+  PlusOutlined, DeleteOutlined, EditOutlined, SearchOutlined,
+  RobotOutlined, ExportOutlined,
 } from "@ant-design/icons"
 import { trendsApi } from "../services/api"
 
-const PLATFORM_COLORS = {
-  weibo: "#e6162d", douyin: "#000", baidu: "#2932e1",
-  zhihu: "#0066ff", toutiao: "#e13b40", "bilibili-hot-search": "#fb7299",
-}
-
 export default function TrendBoard() {
-  const [topics, setTopics] = useState([])
-  const [aiData, setAiData] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [aiLoading, setAiLoading] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
   const [crawling, setCrawling] = useState(false)
   const [groups, setGroups] = useState({})
   const [interestsContent, setInterestsContent] = useState("")
   const [savingGroups, setSavingGroups] = useState(false)
   const [savingInterests, setSavingInterests] = useState(false)
-  const [savingAi, setSavingAi] = useState(false)
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [newGroupName, setNewGroupName] = useState("")
-  const [aiConfig, setAiConfig] = useState({})
+  const [filterMethod, setFilterMethod] = useState("ai")
+  const [reportKey, setReportKey] = useState(0)
   const [activeTab, setActiveTab] = useState("config")
+  const iframeRef = useRef(null)
   const { message } = App.useApp()
 
-  const loadTopics = async () => {
-    setLoading(true)
-    try { setTopics(await trendsApi.list(null, 200, 0) || []) }
-    catch (e) { message.error("加载失败: " + e.message) }
-    finally { setLoading(false) }
-  }
-  const loadAiAnalysis = async () => {
-    setAiLoading(true)
-    try { setAiData(await trendsApi.aiAnalysis()) }
-    catch (e) { /**/ }
-    finally { setAiLoading(false) }
-  }
   const loadConfig = async () => {
     try {
-      const [g, interests, ai] = await Promise.all([
+      const [g, interests, methodRes] = await Promise.all([
         trendsApi.getGroups(), trendsApi.getInterests(),
+        trendsApi.getMethod(),
       ])
-      setGroups(g || {}); setInterestsContent(interests.content || ""); setAiConfig(ai || {})
+      setGroups(g || {})
+      setInterestsContent(interests.content || "")
+      setFilterMethod(methodRes.method || "ai")
     } catch (e) { /**/ }
   }
-  useEffect(() => { loadConfig(); loadTopics(); loadAiAnalysis() }, [])
+  useEffect(() => { loadConfig() }, [])
 
   const handleCrawl = async () => {
     setCrawling(true)
@@ -63,8 +46,12 @@ export default function TrendBoard() {
         await new Promise(r => setTimeout(r, 3000))
         const st = await trendsApi.crawlStatus(); n++
         if (!st.running) {
-          if (st.result && st.result.ok) { message.success("采集完成"); await loadTopics(); await loadAiAnalysis() }
-          else { message.error("采集失败: " + (st.result ? st.result.error : "未知错误")) }
+          if (st.result && st.result.ok) {
+            message.success("采集完成")
+            setReportKey(k => k + 1) // 刷新 iframe
+          } else {
+            message.error("采集失败: " + (st.result ? st.result.error : "未知错误"))
+          }
           break
         }
       }
@@ -72,12 +59,15 @@ export default function TrendBoard() {
     finally { setCrawling(false) }
   }
 
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    try { const res = await trendsApi.refresh(); message.success("新增 " + res.count + " 条"); await loadTopics() }
-    catch (e) { message.error("刷新失败: " + e.message) }
-    finally { setRefreshing(false) }
+  const handleMethodToggle = async (checked) => {
+    const method = checked ? "ai" : "keyword"
+    try {
+      await trendsApi.setMethod(method)
+      setFilterMethod(method)
+      message.success(`已切换为 ${method === "ai" ? "AI 检索" : "关键词检索"}，下次采集生效`)
+    } catch (e) { message.error(e.message) }
   }
+
   const handleSaveGroups = async () => {
     setSavingGroups(true)
     try { await trendsApi.setGroups(groups); message.success("已保存") }
@@ -90,13 +80,6 @@ export default function TrendBoard() {
     catch (e) { message.error(e.message) }
     finally { setSavingInterests(false) }
   }
-  const handleSaveAi = async () => {
-    setSavingAi(true)
-    try { await trendsApi.setAiConfig(aiConfig); message.success("已保存") }
-    catch (e) { message.error(e.message) }
-    finally { setSavingAi(false) }
-  }
-  const handleStatus = async (id, status) => { try { await trendsApi.updateStatus(id, status); await loadTopics() } catch (e) { message.error(e.message) } }
   const addGroup = () => {
     const name = newGroupName.trim()
     if (!name) return message.warning("请输入组名")
@@ -119,32 +102,32 @@ export default function TrendBoard() {
   }
   const updateGroup = (name, value) => setGroups(prev => ({ ...prev, [name]: value }))
 
-  const kwCols = [
-    { title: "标题", dataIndex: "title", key: "title", render: (t, r) => <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }}>{t}</a> },
-    { title: "平台", dataIndex: "platform", key: "platform", width: 100, render: p => <Tag color={PLATFORM_COLORS[p] || "#888"}>{p}</Tag> },
-    { title: "热度", dataIndex: "heat_score", key: "hs", width: 80, sorter: (a, b) => a.heat_score - b.heat_score, render: s => <span style={{ color: s > 8000 ? "#ff4d4f" : s > 5000 ? "#fa8c16" : "#666" }}>🔥 {s}</span> },
-    { title: "匹配词", dataIndex: "matched_keywords", key: "mk", width: 120, render: kw => kw ? <Tag>{kw}</Tag> : null },
-    { title: "操作", key: "act", width: 100, render: (_, r) => (
-      <Space>
-        {r.status === "favorited" ? <Button type="text" size="small" icon={<StarFilled style={{ color: "#faad14" }} />} onClick={() => handleStatus(r.id, "new")} /> : <Button type="text" size="small" icon={<StarOutlined />} onClick={() => handleStatus(r.id, "favorited")} />}
-        <Button type="text" size="small" danger icon={<EyeInvisibleOutlined />} onClick={() => handleStatus(r.id, "ignored")} />
-      </Space>
-    ) },
-  ]
-  const aiCols = [
-    { title: "标题", dataIndex: "title", key: "t", width: 300, render: (t, r) => <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }}>{t}</a> },
-    { title: "平台", dataIndex: "platform_id", key: "p", width: 90, render: p => <Tag color={PLATFORM_COLORS[p] || "#888"}>{p}</Tag> },
-    { title: "标签", dataIndex: "tag", key: "tag", width: 120, render: t => <Tag color="blue">{t}</Tag> },
-    { title: "相关度", dataIndex: "relevance_score", key: "rs", width: 80, sorter: (a, b) => a.relevance_score - b.relevance_score, render: s => <span style={{ color: s > 0.8 ? "#52c41a" : s > 0.5 ? "#fa8c16" : "#999" }}>{(s * 100).toFixed(0)}%</span> },
-  ]
-
   const tabs = [
     {
       key: "config", label: "采集配置", icon: <SettingOutlined />,
       children: (
         <div>
-          
-          <div style={{ marginBottom: 16 }}><Button type="dashed" icon={<PlusOutlined />} onClick={() => setAddModalOpen(true)}>新增关键词分组</Button></div>
+          <Card size="small" style={{ marginBottom: 24 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <span style={{ fontWeight: 600 }}>检索方式</span>
+                <div style={{ color: "#888", fontSize: 13, marginTop: 4 }}>
+                  当前：<Tag color={filterMethod === "ai" ? "blue" : "orange"}>{filterMethod === "ai" ? "AI 语义检索" : "关键词匹配检索"}</Tag>
+                  &nbsp;切换后下次采集生效
+                </div>
+              </div>
+              <Space>
+                <span style={{ color: "#888" }}>关键词</span>
+                <Switch checked={filterMethod === "ai"} onChange={handleMethodToggle} checkedChildren={<RobotOutlined />} unCheckedChildren="K" />
+                <span style={{ color: "#888" }}>AI</span>
+              </Space>
+            </div>
+          </Card>
+
+          <div style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h4 style={{ margin: 0 }}>关键词分组（{filterMethod === "keyword" ? "生效中" : "仅 AI 模式异常回退时使用"}）</h4>
+            <Button type="dashed" icon={<PlusOutlined />} onClick={() => setAddModalOpen(true)}>新增分组</Button>
+          </div>
           {Object.keys(groups).length === 0 && <Card style={{ textAlign: "center", color: "#999", padding: 40 }}>暂无关键词分组，点击上方按钮开始配置</Card>}
           <Row gutter={[16, 16]}>
             {Object.entries(groups).map(([name, keywords]) => (
@@ -157,7 +140,11 @@ export default function TrendBoard() {
           </Row>
           {Object.keys(groups).length > 0 && <Button type="primary" onClick={handleSaveGroups} loading={savingGroups} style={{ marginTop: 16 }}>保存关键词</Button>}
           <Modal title="新增分组" open={addModalOpen} onOk={addGroup} onCancel={() => { setAddModalOpen(false); setNewGroupName("") }}><Input placeholder="输入分组名称" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} onPressEnter={addGroup} /></Modal>
+
           <Card title="AI 兴趣方向" size="small" style={{ marginTop: 24 }}>
+            <div style={{ color: "#888", fontSize: 13, marginBottom: 8 }}>
+              {filterMethod === "ai" ? "AI 模式用此文件做语义过滤，描述你关注的内容方向" : "仅 AI 模式下生效"}
+            </div>
             <Input.TextArea rows={8} value={interestsContent} onChange={e => setInterestsContent(e.target.value)} placeholder="描述你关注的内容方向，AI 用来自动分类热搜..." style={{ fontFamily: "monospace", fontSize: 13 }} />
             <Button type="primary" onClick={handleSaveInterests} loading={savingInterests} style={{ marginTop: 12 }}>保存</Button>
           </Card>
@@ -165,30 +152,28 @@ export default function TrendBoard() {
       ),
     },
     {
-      key: "keyword", label: "关键词检索结果", icon: <SearchOutlined />,
+      key: "report", label: "检索结果", icon: <SearchOutlined />,
       children: (
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <span style={{ color: "#999" }}>共 {topics.length} 条（按 frequency_words.txt 过滤）</span>
-            <Button size="small" icon={<ReloadOutlined />} onClick={handleRefresh} loading={refreshing}>刷新</Button>
+        <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 180px)" }}>
+          <div style={{ marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ color: "#888" }}>
+              TrendRadar 报告 · 
+              <Tag color={filterMethod === "ai" ? "blue" : "orange"} style={{ marginLeft: 8 }}>
+                {filterMethod === "ai" ? "AI 检索" : "关键词检索"}
+              </Tag>
+            </span>
+            <Space>
+              <Button size="small" icon={<ReloadOutlined />} onClick={() => setReportKey(k => k + 1)}>刷新报告</Button>
+              <Button size="small" icon={<ExportOutlined />} onClick={() => window.open(trendsApi.getReport(), '_blank')}>新窗口打开</Button>
+            </Space>
           </div>
-          <Table columns={kwCols} dataSource={topics} rowKey="id" loading={loading} pagination={{ pageSize: 30, showSizeChanger: false }} size="middle" />
-        </div>
-      ),
-    },
-    {
-      key: "ai", label: "AI 检索结果", icon: <RobotOutlined />,
-      children: (
-        <div>
-          {aiData && aiData.message ? (
-            <Card style={{ textAlign: "center", color: "#999", padding: 40 }}>{aiData.message}</Card>
-          ) : (
-            <>
-              {aiData && aiData.tags && aiData.tags.length > 0 && <div style={{ marginBottom: 12 }}>{aiData.tags.map(t => <Tag key={t.tag} color="blue">{t.tag}</Tag>)}</div>}
-              <div style={{ marginBottom: 8, color: "#999" }}>共 {aiData ? aiData.total : 0} 条（AI 语义匹配）</div>
-              <Table columns={aiCols} dataSource={aiData ? aiData.results : []} rowKey={(r, i) => i} loading={aiLoading} pagination={{ pageSize: 30, showSizeChanger: false }} size="middle" />
-            </>
-          )}
+          <iframe
+            ref={iframeRef}
+            key={reportKey}
+            src={trendsApi.getReport()}
+            style={{ flex: 1, width: "100%", border: "1px solid #e8e8e8", borderRadius: 8, background: "#fff" }}
+            title="TrendRadar 报告"
+          />
         </div>
       ),
     },

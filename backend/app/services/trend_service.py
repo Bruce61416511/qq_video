@@ -1,4 +1,4 @@
-﻿"""热点洞察服务 - 读取 TrendRadar SQLite 数据，管理配置文件。"""
+"""热点洞察服务 - 读取 TrendRadar SQLite 数据，管理配置文件。"""
 
 import os
 import re
@@ -274,6 +274,35 @@ def write_ai_config(config: dict):
         _set_yaml_value("ai.api_base", config["api_base"])
     if "ai_analysis_enabled" in config:
         _set_yaml_value("ai_analysis.enabled", "true" if config["ai_analysis_enabled"] else "false")
+
+# ── 筛选方法切换 ──
+
+def get_filter_method() -> str:
+    """读取 config.yaml 中的 report.method。"""
+    path = TRENDRADAR_DIR / "config" / "config.yaml"
+    if not path.exists():
+        return "keyword"
+    import re as _re
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = _re.match(r'^\s+method:\s*"(\w+)"', line)
+        if m:
+            return m.group(1)
+    return "keyword"
+
+def set_filter_method(method: str):
+    """写入 config.yaml 中的 report.method。"""
+    path = TRENDRADAR_DIR / "config" / "config.yaml"
+    if not path.exists():
+        return
+    import re as _re
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for i, line in enumerate(lines):
+        m = _re.match(r'^(\s+method:\s*)"(\w+)"', line)
+        if m:
+            lines[i] = f'{m.group(1)}"{method}"'
+            break
+    path.write_text("\n".join(lines), encoding="utf-8")
+
 # ── AI 分析结果 ──
 
 def _get_ai_tags(db_path: str) -> list[dict]:

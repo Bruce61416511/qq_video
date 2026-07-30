@@ -149,6 +149,35 @@ async def trigger_crawl():
 async def crawl_status():
     """查询采集任务状态。"""
     return _crawl_status
+
+# ── 报告 iframe ──
+
+from fastapi.responses import HTMLResponse
+
+@router.get("/report", response_class=HTMLResponse)
+async def get_report():
+    """返回 TrendRadar 生成的 index.html 报告。"""
+    index_path = trend_service.TRENDRADAR_DIR / "output" / "index.html"
+    if not index_path.exists():
+        return HTMLResponse("<html><body><p style='text-align:center;color:#999;padding:40px'>暂无报告，请先点击 重新采集</p></body></html>")
+    return HTMLResponse(index_path.read_text(encoding="utf-8"))
+
+# ── 筛选方法切换 ──
+
+@router.get("/config/method")
+async def get_filter_method():
+    """获取当前筛选方法（ai 或 keyword）。"""
+    return {"method": trend_service.get_filter_method()}
+
+@router.put("/config/method")
+async def set_filter_method(data: dict):
+    """切换筛选方法。"""
+    method = data.get("method", "keyword")
+    if method not in ("ai", "keyword"):
+        raise HTTPException(400, "method 必须是 ai 或 keyword")
+    trend_service.set_filter_method(method)
+    return {"ok": True, "method": method}
+
 # ── AI 分析结果 ──
 
 @router.get("/ai-analysis")

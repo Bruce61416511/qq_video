@@ -1,4 +1,4 @@
-﻿const BASE = 'http://localhost:8000/api'
+const BASE = 'http://localhost:8000/api'
 
 async function request(url, options = {}) {
   const res = await fetch(`${BASE}${url}`, {
@@ -61,6 +61,9 @@ export const settingsApi = {
 }
 
 export const trendsApi = {
+  getReport: () => `${BASE}/trends/report`,
+  getMethod: () => request('/trends/config/method'),
+  setMethod: (method) => request('/trends/config/method', { method: 'PUT', body: JSON.stringify({ method }) }),
   list: (status, limit, offset) => {
     const params = new URLSearchParams()
     if (status) params.append('status', status)
