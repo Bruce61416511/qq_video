@@ -5,6 +5,7 @@ LLM 分镜策划服务
 """
 import json
 import httpx
+from pathlib import Path
 from ..config import get_setting
 
 LLM_BASE_URLS = {
@@ -15,7 +16,18 @@ LLM_BASE_URLS = {
     "moonshot": "https://api.moonshot.cn/v1",
 }
 
-SYSTEM_PROMPT = """你是一个资深短视频策划导演，专精食品、健康、养生赛道。将用户给定的主题拆解为专业分镜脚本。
+PROMPT_DIR = Path(__file__).parent.parent.parent.parent / "TrendRadar-master" / "config"
+
+def _load_prompt(filename: str, fallback: str) -> str:
+    """从配置文件读取提示词，文件不存在时使用硬编码兜底。"""
+    p = PROMPT_DIR / filename
+    if p.exists():
+        return p.read_text(encoding="utf-8").strip()
+    return fallback
+
+SYSTEM_PROMPT = _load_prompt(
+    "manual_topic_prompt.txt",
+    """你是一个资深短视频策划导演，专精食品、健康、养生赛道。将用户给定的主题拆解为专业分镜脚本。
 
 ## 硬性约束
 
@@ -81,10 +93,12 @@ SYSTEM_PROMPT = """你是一个资深短视频策划导演，专精食品、健�
     "voice_script": "酸甜带气，清爽解腻。左下角试试吧。"
   }
 ]"""
+)
 
 
-
-TOPIC_SHOT_PROMPT = """你是一个短视频分镜导演。根据给定的选题结构生成分镜脚本。
+TOPIC_SHOT_PROMPT = _load_prompt(
+    "shot_topic_prompt.txt",
+    """你是一个短视频分镜导演。根据给定的选题结构生成分镜脚本。
 
 ## 分镜规则
 - 镜1（{hook_dur}s）：直接使用黄金3秒文案作为配音，生成对应的画面提示词
@@ -101,9 +115,8 @@ TOPIC_SHOT_PROMPT = """你是一个短视频分镜导演。根据给定的选题
 ## 要求
 - scene_prompt 以【Xs】开头标注时长
 - 画风：暖色调、生活化、接地气
-- 配音：口语化、像朋友聊天
-"""
-
+- 配音：口语化、像朋友聊天"""
+)
 async def generate_shot_plan_from_topic(
     video_topic: str,
     angle: str,
@@ -143,12 +156,12 @@ async def generate_shot_plan_from_topic(
 分镜规划：共{shot_count}镜，镜1({hook_dur}s)+中间{outline_count}镜(各{mid_dur}s)+结尾({end_dur}s)
 """
 
-    api_key = _get_setting("llm_api_key")
+    api_key = await get_setting("llm_api_key")
     if not api_key:
         return _fallback_topic_shots(hook, content_outline, hook_dur, mid_dur, end_dur)
 
-    model = _get_setting("llm_model", "qwen-plus")
-    base_url = _get_setting("llm_base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    model = (await get_setting("llm_model")) or "qwen-plus"
+    base_url = (await get_setting("llm_base_url")) or "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
