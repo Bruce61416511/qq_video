@@ -1787,7 +1787,6 @@ Slack is a team collaboration tool, Incoming Webhooks can push messages to Slack
 1. **View Generated URL**:
    - In "Webhook URLs for Your Workspace" section
    - You'll see the newly generated Webhook URL
-   - Format: `https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX`
 
 2. **Copy URL**:
    - Click **"Copy"** button on the right of URL
