@@ -228,10 +228,10 @@ async def list_config_files():
             "exists": exists,
             "size": size,
             "description": {
-                "ai_interests": "AI 兴趣方向，控制 AI 过滤的匹配范围",
-                "frequency_words": "关键词分组，关键词模式下使用",
-                "ai_analysis_prompt": "AI 热点分析的提示词（情报分析视角）",
-                "topic_to_video_prompt": "选题生成提示词（热搜→视频选题）",
+                "ai_interests": "根据语义筛选热搜（AI 模式专用）",
+                "frequency_words": "根据关键词筛选热搜（关键词模式专用）",
+                "ai_analysis_prompt": "AI 情报分析提示词（当前未启用）",
+                "topic_to_video_prompt": "视频选题提示词：热搜转为可拍摄选题",
             }.get(key, ""),
         })
     return {"files": files}
@@ -256,6 +256,12 @@ async def save_config_file(key: str, data: dict):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     return {"ok": True, "key": key}
+
+
+@router.get("/topic-to-video/data")
+async def get_topic_data():
+    """返回视频选题的原始 JSON 数据（供文生视频页面下拉选择）。"""
+    return topic_to_video.get_topic_data()
 
 # ── AI 分析结果 ──
 

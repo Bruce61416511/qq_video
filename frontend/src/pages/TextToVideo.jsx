@@ -9,7 +9,7 @@ import {
   EditOutlined, ReloadOutlined, ArrowRightOutlined,
   ArrowLeftOutlined, VideoCameraOutlined
 } from '@ant-design/icons'
-import { mediaApi } from '../services/api'
+import { mediaApi, trendsApi } from '../services/api'
 
 const { TextArea } = Input
 
@@ -36,6 +36,17 @@ export default function TextToVideo() {
   const navigate = useNavigate()
   const { message } = App.useApp()
 
+  // Video topics from trends
+  const [videoTopics, setVideoTopics] = useState([])
+  const [selectedTopicId, setSelectedTopicId] = useState(null)
+
+  // Load video topics on mount
+  useEffect(() => {
+    trendsApi.getTopicData().then(data => {
+      if (data && data.topics) setVideoTopics(data.topics)
+    }).catch(() => {})
+  }, [])
+
   // Step state
   const [current, setCurrent] = useState(0)
 
@@ -45,6 +56,27 @@ export default function TextToVideo() {
   const [resolution, setResolution] = useState('1080P')
   const [shotCount, setShotCount] = useState(3)
   const [shotDuration, setShotDuration] = useState('5')
+
+  // Handle topic selection from dropdown
+  const handleTopicSelect = (idx) => {
+    const t = videoTopics[idx]
+    if (!t) return
+    setSelectedTopicId(idx)
+
+    const parts = [
+      `视频选题：${t.video_topic || ''}`,
+      `切入角度：${t.angle || ''}`,
+      t.hook ? `黄金3秒开头：${t.hook}` : '',
+      t.content_outline && t.content_outline.length > 0
+        ? `内容要点：\n${t.content_outline.map((p, i) => `  ${i + 1}. ${p}`).join('\n')}`
+        : '',
+      t.target_emotion ? `目标情绪：${t.target_emotion}` : '',
+      t.product_link ? `产品关联：${t.product_link}` : '',
+      `时长建议：${t.duration || 30}秒`,
+    ].filter(Boolean)
+    setTopic(parts.join('\n'))
+    if (t.duration) setShotDuration(String(Math.max(3, Math.floor((t.duration || 30) / (t.content_outline?.length || 3)))))
+  }
 
   // Step 2 - shots
   const [shots, setShots] = useState([])
@@ -131,6 +163,25 @@ export default function TextToVideo() {
   // ---------- Step 1: Input ----------
   const renderStep1 = () => (
     <Card>
+      {/* Video topic selector */}
+      {videoTopics.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <span style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 8 }}>
+            📋 从今日选题中选择
+          </span>
+          <Select
+            placeholder="选择一个选题自动填充..."
+            style={{ width: '100%' }}
+            value={selectedTopicId}
+            onChange={handleTopicSelect}
+            options={videoTopics.map((t, i) => ({
+              value: i,
+              label: `${i + 1}. ${t.video_topic || t.source_title?.substring(0, 40)}`,
+            }))}
+          />
+        </div>
+      )}
+
       <div style={{ marginBottom: 20 }}>
         <span style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 8 }}>
           视频主题 <span style={{ color: '#ff4d4f' }}>*</span>
@@ -145,175 +196,114 @@ export default function TextToVideo() {
         />
       </div>
 
-      <Space size="large" style={{ marginBottom: 24 }} wrap>
+      <Space size="middle" wrap>
         <div>
-          <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>视频尺寸</span>
-          <Select value={size} onChange={setSize} options={SIZE_OPTIONS} style={{ width: 140 }} />
+          <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>画面比例</span>
+          <Select value={size} onChange={setSize} options={SIZE_OPTIONS} style={{ width: 120 }} />
         </div>
         <div>
           <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>分辨率</span>
-          <Select value={resolution} onChange={setResolution} options={RESOLUTION_OPTIONS} style={{ width: 120 }} />
+          <Select value={resolution} onChange={setResolution} options={RESOLUTION_OPTIONS} style={{ width: 100 }} />
         </div>
         <div>
           <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>分镜数量</span>
-          <Select value={shotCount} onChange={setShotCount} options={[2,3,4,5,6,7,8,9,10].map(n => ({ value: n, label: n+'个' }))} style={{ width: 100 }} />
+          <Select value={shotCount} onChange={setShotCount}
+            options={[1,2,3,4,5,6,7,8,9,10].map(n => ({ value: n, label: `${n} 镜` }))}
+            style={{ width: 80 }} />
         </div>
         <div>
           <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>每镜时长</span>
-          <Select value={shotDuration} onChange={setShotDuration} options={DURATION_OPTIONS} style={{ width: 110 }} />
+          <Select value={shotDuration} onChange={setShotDuration} options={DURATION_OPTIONS} style={{ width: 80 }} />
         </div>
       </Space>
 
-      <Button
-        type="primary"
-        size="large"
-        icon={shotsLoading ? <LoadingOutlined /> : <ThunderboltOutlined />}
-        onClick={handleGenerateShots}
-        loading={shotsLoading}
-        disabled={!topic.trim()}
-        block
-      >
-        AI 生成分镜方案
-      </Button>
+      <div style={{ marginTop: 24 }}>
+        <Button type="primary" size="large" block loading={shotsLoading}
+          onClick={handleGenerateShots}
+          icon={<ThunderboltOutlined />}>
+          生成分镜方案
+        </Button>
+      </div>
     </Card>
   )
 
-  // ---------- Step 2: Edit Shots ----------
+  // ---------- Step 2: Edit shots ----------
   const renderStep2 = () => (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div>
-          <span style={{ fontWeight: 600, fontSize: 14 }}>编辑分镜方案</span>
-          <Tag color="blue" style={{ marginLeft: 8 }}>{shots.length} 个分镜</Tag>
-        </div>
+    <Card title={<span><VideoCameraOutlined style={{ marginRight: 6 }} />分镜方案 · 点击编辑</span>}
+      extra={
         <Space>
-          <Tooltip title="基于当前主题重新生成全部">
-            <Button icon={<ReloadOutlined />} onClick={regenerateAll} loading={shotsLoading} size="small">
-              重新生成全部
-            </Button>
-          </Tooltip>
-          <Popconfirm title="返回上一步将丢失当前编辑" onConfirm={() => setCurrent(0)} okText="确定" cancelText="取消">
-            <Button icon={<ArrowLeftOutlined />} size="small">返回修改主题</Button>
-          </Popconfirm>
+          <Button size="small" icon={<ReloadOutlined />} loading={shotsLoading} onClick={regenerateAll}>全部重新生成</Button>
+          <Button size="small" onClick={() => setCurrent(0)} icon={<ArrowLeftOutlined />}>返回修改主题</Button>
         </Space>
-      </div>
-
-      {shots.map((shot, i) => (
-        <Card
-          key={i}
-          size="small"
-          title={
-            <Space>
-              <Tag color="purple">分镜 {i + 1}</Tag>
-              <Select
-                value={shot.duration}
-                onChange={v => updateShot(i, 'duration', v)}
-                options={DURATION_OPTIONS}
-                size="small"
-              />
+      }>
+      {shots.map((shot, idx) => (
+        <div key={idx} style={{
+          marginBottom: 16, padding: 16, borderRadius: 8,
+          border: '1px solid #f0f0f0', background: '#fafafa',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Tag color="blue">分镜 {idx + 1}</Tag>
+            <Space size={4}>
+              <Tag>{shot.duration || shotDuration}秒</Tag>
+              <Tooltip title="重新生成此分镜">
+                <Button size="small" type="text" icon={<ReloadOutlined />}
+                  loading={regeneratingIndex === idx} onClick={() => regenerateShot(idx)} />
+              </Tooltip>
             </Space>
-          }
-          extra={
-            <Tooltip title="重新生成此分镜">
-              <Button
-                type="text"
-                icon={regeneratingIndex === i ? <LoadingOutlined /> : <ReloadOutlined />}
-                onClick={() => regenerateShot(i)}
-                loading={regeneratingIndex === i}
-                size="small"
-              />
-            </Tooltip>
-          }
-          style={{ marginBottom: 12 }}
-        >
-          <div style={{ marginBottom: 10 }}>
-            <span style={{ fontWeight: 600, fontSize: 12, color: '#8c8c8c' }}>🎬 画面提示词</span>
-            <TextArea
-              value={shot.scene_prompt}
-              onChange={e => updateShot(i, 'scene_prompt', e.target.value)}
-              rows={2}
-              style={{ marginTop: 4 }}
-            />
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <span style={{ fontWeight: 600, fontSize: 12, color: '#666' }}>画面提示词</span>
+            <TextArea value={shot.scene_prompt || ''} rows={3}
+              onChange={e => updateShot(idx, 'scene_prompt', e.target.value)}
+              placeholder="画面描述..." style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
           <div>
-            <span style={{ fontWeight: 600, fontSize: 12, color: '#8c8c8c' }}>🎙️ 语音文案</span>
-            <TextArea
-              value={shot.voice_script}
-              onChange={e => updateShot(i, 'voice_script', e.target.value)}
-              rows={2}
-              style={{ marginTop: 4 }}
-            />
+            <span style={{ fontWeight: 600, fontSize: 12, color: '#666' }}>配音文案</span>
+            <TextArea value={shot.voice_script || ''} rows={2}
+              onChange={e => updateShot(idx, 'voice_script', e.target.value)}
+              placeholder="配音内容..." style={{ fontFamily: 'monospace', fontSize: 12 }} />
           </div>
-        </Card>
+        </div>
       ))}
-
       <Divider />
-
       <div style={{ textAlign: 'right' }}>
-        <Button
-          type="primary"
-          size="large"
-          icon={<ArrowRightOutlined />}
-          onClick={handleSubmitGenerate}
-          disabled={shots.length === 0}
-        >
-          确认并生成视频
-        </Button>
+        <Popconfirm title="确认提交？将开始生成视频" onConfirm={handleSubmitGenerate}>
+          <Button type="primary" size="large" icon={<ArrowRightOutlined />}>
+            确认并生成视频
+          </Button>
+        </Popconfirm>
       </div>
-    </div>
+    </Card>
   )
 
-  // Shot status polling
+  // For step 3: poll for status
+  const [polling, setPolling] = useState(false)
   const [shotStatuses, setShotStatuses] = useState([])
-  const pollRef = useRef(null)
+  const mediaRef = useRef(resultMedia)
+
+  useEffect(() => { mediaRef.current = resultMedia }, [resultMedia])
 
   useEffect(() => {
-    if (current === 2 && resultMedia?.id) {
-      const poll = async () => {
-        try {
-          const data = await mediaApi.getShots(resultMedia.id)
-          setShotStatuses(data || [])
-          // Check if media is done
-          const list = await mediaApi.list()
-          const m = list.find(x => x.id === resultMedia.id)
-          if (m) setResultMedia(m)
-        } catch (e) { /* ignore */ }
-      }
-      poll()
-      pollRef.current = setInterval(poll, 3000)
-      return () => clearInterval(pollRef.current)
-    } else {
-      if (pollRef.current) clearInterval(pollRef.current)
-    }
-  }, [current, resultMedia?.id])
-
-  // Auto-restore: check for in-progress generation on mount
-  useEffect(() => {
-    const restore = async () => {
+    if (current !== 2 || !resultMedia || polling) return
+    let cancel = false
+    const poll = async () => {
       try {
-        const list = await mediaApi.list()
-        const generating = list.find(m => m.status === 'generating' && m.source === 'ai')
-        if (generating) {
-          setResultMedia(generating)
-          setCurrent(2)
-          setTopic(generating.prompt || '')
-          // Try loading shots
-          try {
-            const data = await mediaApi.getShots(generating.id)
-            if (data && data.length > 0) {
-              setShots(data.map(s => ({
-                scene_prompt: s.scene_prompt,
-                voice_script: s.voice_script,
-                duration: s.duration,
-              })))
-            }
-          } catch (e) { /* ignore */ }
+        const shots = await mediaApi.getShots(resultMedia.id)
+        if (cancel) return
+        setShotStatuses(shots || [])
+        const allDone = shots.every(s => s.status === 'done' || s.status === 'failed')
+        if (!allDone) setTimeout(poll, 3000)
+        else {
+          const media = await mediaApi.list()
+            .then(list => list.find(m => m.id === mediaRef.current?.id))
+          if (media) setResultMedia(media)
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) { if (!cancel) setTimeout(poll, 3000) }
     }
-    restore()
-  }, [])
-
+    setPolling(true)
+    setTimeout(poll, 2000)
+    return () => { cancel = true }
+  }, [current, resultMedia, polling])
 
   const shotDone = shotStatuses.filter(s => s.status === 'done').length
   const shotTotal = shotStatuses.length || shots.length
@@ -349,20 +339,12 @@ export default function TextToVideo() {
           <Timeline
             items={shotStatuses.map((s, i) => {
               const statusColors = {
-                pending: 'gray',
-                tts: 'purple',
-                video: 'blue',
-                downloading: 'cyan',
-                done: 'green',
-                failed: 'red',
+                pending: 'gray', tts: 'purple', video: 'blue',
+                downloading: 'cyan', done: 'green', failed: 'red',
               }
               const statusLabels = {
-                pending: '排队中',
-                tts: '配音中',
-                video: '生成画面',
-                downloading: '下载中',
-                done: '已完成',
-                failed: '失败',
+                pending: '排队中', tts: '配音中', video: '生成画面',
+                downloading: '下载中', done: '已完成', failed: '失败',
               }
               return {
                 color: statusColors[s.status] || 'gray',

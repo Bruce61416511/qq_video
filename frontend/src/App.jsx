@@ -1,4 +1,4 @@
-﻿import { useRef } from "react"
+import { useRef } from "react"
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom"
 import { Layout, Menu, theme } from "antd"
 import {
@@ -15,10 +15,10 @@ import TrendBoard from "./pages/TrendBoard"
 const { Sider, Content } = Layout
 
 const menuItems = [
-  { key: "/trends", icon: <FireOutlined />, label: "热搜看板" },
   { key: "/", icon: <TeamOutlined />, label: "账号管理" },
-  { key: "/media", icon: <VideoCameraOutlined />, label: "素材库" },
+  { key: "/trends", icon: <FireOutlined />, label: "热搜看板" },
   { key: "/text-to-video", icon: <ThunderboltOutlined />, label: "文生视频" },
+  { key: "/media", icon: <VideoCameraOutlined />, label: "素材管理" },
   { key: "/tasks", icon: <HistoryOutlined />, label: "发布记录" },
   { key: "/settings", icon: <SettingOutlined />, label: "设置" },
 ]

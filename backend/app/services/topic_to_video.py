@@ -13,6 +13,18 @@ OUTPUT_FILE = TRENDRADAR_DIR / "output" / "topic_to_video.html"
 _status = {"running": False, "result": None, "html": None, "generated_at": None}
 
 
+def _get_report_titles() -> set:
+    """从报告 HTML 提取当前在榜的所有标题。"""
+    index_path = TRENDRADAR_DIR / "output" / "index.html"
+    if not index_path.exists():
+        return set()
+    html = index_path.read_text(encoding="utf-8")
+    titles = set()
+    for m in re.finditer(r'class="news-link"[^>]*>([^<]+)</a>', html):
+        titles.add(m.group(1).strip())
+    return titles
+
+
 def _get_top_5_ai_results() -> list[dict]:
     db_path = TRENDRADAR_DIR / "output" / "news" / "2026-07-30.db"
     if not db_path.exists():
@@ -30,6 +42,7 @@ def _get_top_5_ai_results() -> list[dict]:
         FROM ai_filter_results r
         JOIN news_items n ON r.news_item_id = n.id
         WHERE r.status = 'active'
+          
         GROUP BY n.title
         ORDER BY score DESC
         LIMIT 5
@@ -154,13 +167,41 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
 </html>"""
 
 
+_last_topics = []
+
+
+# Cache last parsed topics
+_last_topics = []
+
+def get_topic_data():
+    """返回最新选题的 JSON 数据。"""
+    global _last_topics
+    if _last_topics:
+        return {"topics": _last_topics, "generated_at": _status.get("generated_at")}
+    # Fallback: parse from saved HTML
+    if OUTPUT_FILE.exists():
+        html = OUTPUT_FILE.read_text(encoding="utf-8")
+        m = re.search(r'var _TOPICS = (\[.*?\]);', html)
+        if m:
+            try:
+                _last_topics = json.loads(m.group(1))
+                return {"topics": _last_topics, "generated_at": _status.get("generated_at")}
+            except:
+                pass
+    return {"topics": [], "generated_at": None}
+
 def generate():
     global _status
     _status["running"] = True
     _status["result"] = None
     _status["html"] = None
     try:
-        results = _get_top_5_ai_results()
+        all_results = _get_top_5_ai_results()
+        report_titles = _get_report_titles()
+        results = [r for r in all_results if r['title'] in report_titles]
+        if not report_titles:
+            # Report not generated yet, use all results
+            results = all_results
         if not results:
             _status["html"] = _generate_html([], gen_time=_status.get("generated_at"))
             _status["result"] = {"ok": True, "count": 0, "message": "没有 AI 过滤结果"}
@@ -213,7 +254,9 @@ def generate():
         OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
         OUTPUT_FILE.write_text(html, encoding="utf-8")
         _status["html"] = html
-        _status["result"] = {"ok": True, "count": len(topics)}
+        global _last_topics
+        _last_topics = topics
+
 
     except Exception as e:
         _status["html"] = _generate_html([], error=str(e))
