@@ -11,3 +11,9 @@ matrix_repo/
 *.png
 *.jpg
 .env
+
+# 二进制工具
+ffmpeg-8.1.2-essentials_build.zip
+# TrendRadar 虚拟环境
+TrendRadar-master/.venv/
+TrendRadar-master/output/
