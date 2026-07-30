@@ -46,7 +46,6 @@ export default function TrendBoard() {
     try {
       const [g, interests, ai] = await Promise.all([
         trendsApi.getGroups(), trendsApi.getInterests(),
-        trendsApi.getAiConfig().catch(() => ({})),
       ])
       setGroups(g || {}); setInterestsContent(interests.content || ""); setAiConfig(ai || {})
     } catch (e) { /**/ }
@@ -144,18 +143,7 @@ export default function TrendBoard() {
       key: "config", label: "采集配置", icon: <SettingOutlined />,
       children: (
         <div>
-          <Card title="TrendRadar AI 配置" size="small" style={{ marginBottom: 24 }}>
-            <Row gutter={16}>
-              <Col span={6}><div style={{ marginBottom: 8, color: "#666", fontSize: 13 }}>模型</div><Input value={aiConfig.model || ""} onChange={e => setAiConfig(p => ({ ...p, model: e.target.value }))} placeholder="openai/qwen-plus" /></Col>
-              <Col span={12}><div style={{ marginBottom: 8, color: "#666", fontSize: 13 }}>API Key</div><Input.Password value={aiConfig.api_key || ""} onChange={e => setAiConfig(p => ({ ...p, api_key: e.target.value }))} placeholder="sk-xxx" /></Col>
-              <Col span={6}><div style={{ marginBottom: 8, color: "#666", fontSize: 13 }}>API Base URL</div><Input value={aiConfig.api_base || ""} onChange={e => setAiConfig(p => ({ ...p, api_base: e.target.value }))} placeholder="https://dashscope..." /></Col>
-            </Row>
-            <div style={{ marginTop: 12 }}>
-              <Switch checked={aiConfig.ai_analysis_enabled} onChange={v => setAiConfig(p => ({ ...p, ai_analysis_enabled: v }))} />
-              <span style={{ marginLeft: 8, color: "#666" }}>启用 AI 分析</span>
-              <Button type="primary" size="small" onClick={handleSaveAi} loading={savingAi} style={{ marginLeft: 16 }}>保存</Button>
-            </div>
-          </Card>
+          
           <div style={{ marginBottom: 16 }}><Button type="dashed" icon={<PlusOutlined />} onClick={() => setAddModalOpen(true)}>新增关键词分组</Button></div>
           {Object.keys(groups).length === 0 && <Card style={{ textAlign: "center", color: "#999", padding: 40 }}>暂无关键词分组，点击上方按钮开始配置</Card>}
           <Row gutter={[16, 16]}>

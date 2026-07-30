@@ -269,8 +269,7 @@ def read_ai_config() -> dict:
 def write_ai_config(config: dict):
     if "model" in config:
         _set_yaml_value("ai.model", config["model"])
-    if "api_key" in config:
-        _set_yaml_value("ai.api_key", config["api_key"])
+    # API Key 不写入文件，通过环境变量 AI_API_KEY 注入
     if "api_base" in config:
         _set_yaml_value("ai.api_base", config["api_base"])
     if "ai_analysis_enabled" in config:

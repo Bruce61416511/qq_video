@@ -101,6 +101,25 @@ def _run_crawl():
     try:
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
+        # 从数据库读取 API Key，通过环境变量注入（不写入文件）
+        import asyncio as _asyncio
+        from ..database import async_session
+        from ..models.models import Setting
+        from sqlalchemy import select as _select
+        async def _get_key():
+            async with async_session() as db:
+                r = await db.execute(_select(Setting).where(Setting.key == "llm_api_key"))
+                s = r.scalar_one_or_none()
+                return s.value if s else ""
+        try:
+            loop = _asyncio.get_running_loop()
+        except RuntimeError:
+            loop = _asyncio.new_event_loop()
+            key = loop.run_until_complete(_get_key())
+        else:
+            key = loop.run_until_complete(_asyncio.ensure_future(_get_key()))
+        if key:
+            env["AI_API_KEY"] = key
         proc = subprocess.run(
             [str(venv_python), "-m", "trendradar"],
             cwd=str(tr_dir),

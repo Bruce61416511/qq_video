@@ -365,7 +365,7 @@ ai:
 
   model: "openai/qwen-plus"
 
-  api_key: "sk-41c0f1df5c3549d095bc915ca119677f"
+  api_key: ""
   
   api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
                                     #
