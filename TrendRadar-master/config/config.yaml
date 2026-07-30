@@ -363,7 +363,7 @@ ai:
   # 完整列表: https://docs.litellm.ai/docs/providers
   # 如果你对于看英文文档比较头疼，那么可以点击页面右下角的 【Ask AI】 ,用中文询问怎么配置
 
-    model: "openai/qwen-plus"
+  model: "openai/qwen-plus"
 
   api_key: "sk-41c0f1df5c3549d095bc915ca119677f"
   
@@ -440,7 +440,7 @@ ai_analysis:
 # 对推送标题进行翻译，不包含 AI 分析的内容
 # ===============================================================
 ai_translation:
-  enabled: false                     # 是否启用翻译功能（true=启用, false=关闭）
+  enabled: true                     # 是否启用翻译功能（true=启用, false=关闭）
   language: "中文"                   # 翻译目标语言（如 "English", "Korean", "法语"）
   prompt_file: "ai_translation_prompt.txt"   # 提示词文件（相对于 config 目录）
 

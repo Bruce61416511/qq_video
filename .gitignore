@@ -6,7 +6,6 @@ __pycache__/
 cookies/
 uploads/
 matrix_ref/
-matrix_repo/
 *.mp4
 *.png
 *.jpg

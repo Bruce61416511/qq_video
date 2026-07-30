@@ -187,6 +187,35 @@ def write_keyword_groups(groups: dict):
 # ── TrendRadar AI 配置 ──
 
 def _get_yaml_value(key_path: str) -> str:
+    """从 config.yaml 读取指定键的值。处理嵌套键如 ai_analysis.enabled。"""
+    path = TRENDRADAR_DIR / "config" / "config.yaml"
+    if not path.exists():
+        return ""
+    parts = key_path.split(".")
+    section_key = parts[0]
+    sub_key = parts[-1] if len(parts) > 1 else None
+    lines = path.read_text(encoding="utf-8").splitlines()
+    depth = -1
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        # 匹配 section 头：单独一行的 key:（后面没有值，或只有注释）
+        if depth == -1 and re.match(rf"^{section_key}\s*:\s*(#.*)?$", stripped):
+            # 确认下一行缩进更深（是真正的 mapping section）
+            indent = len(line) - len(line.lstrip())
+            depth = indent
+            if not sub_key:
+                return ""
+            continue
+        if depth >= 0:
+            cur_indent = len(line) - len(line.lstrip())
+            # 找到子键
+            m = re.match(rf"^\s+{sub_key}\s*:\s*(.+?)(?:\s*#.*)?$", line)
+            if m and cur_indent > depth:
+                return m.group(1).strip().strip('"')
+            # 缩进回到 section 级别或更浅，section 结束
+            if line.strip() and cur_indent <= depth:
+                depth = -1
+    return ""
     """从 config.yaml 读取指定键的值（简单行匹配）。"""
     path = TRENDRADAR_DIR / "config" / "config.yaml"
     if not path.exists():
