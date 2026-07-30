@@ -1,4 +1,4 @@
-import datetime
+﻿import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Text, Enum, func, ForeignKey
 from ..database import Base
 import enum
@@ -68,6 +68,25 @@ class PublishTask(Base):
     error_msg = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.datetime.now)
     finished_at = Column(DateTime, nullable=True)
+
+class HotTopicStatus(str, enum.Enum):
+    new = "new"
+    favorited = "favorited"
+    used = "used"
+    ignored = "ignored"
+
+class HotTopic(Base):
+    __tablename__ = "hot_topics"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(500), nullable=False)
+    url = Column(String(500), default="")
+    platform = Column(String(50), default="")
+    heat_score = Column(Integer, default=0)
+    matched_keywords = Column(String(500), default="")
+    status = Column(Enum(HotTopicStatus), default=HotTopicStatus.new)
+    collected_at = Column(DateTime, default=datetime.datetime.now)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
 
 class Setting(Base):
     __tablename__ = "settings"

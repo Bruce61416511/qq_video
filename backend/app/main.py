@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import sys
 
 if sys.platform == "win32":
@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from .database import init_db
-from .routers import accounts, media, publish, settings
+from .routers import accounts, media, publish, settings, trends
 from .services.worker import start_worker
 from .config import UPLOAD_DIR
 
@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
     await start_worker()
     yield
 
-app = FastAPI(title="瑙嗛鍙峰姪鎵?API", lifespan=lifespan)
+app = FastAPI(title="鐟欏棝顣堕崣宄板И閹?API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,6 +35,7 @@ app.include_router(accounts.router)
 app.include_router(media.router)
 app.include_router(publish.router)
 app.include_router(settings.router)
+app.include_router(trends.router)
 
 @app.get("/api/health")
 async def health():

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+﻿from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
 
@@ -83,3 +83,20 @@ class SettingOut(BaseModel):
 
 class SettingUpdate(BaseModel):
     value: str
+class HotTopicOut(BaseModel):
+    id: int
+    title: str
+    url: str
+    platform: str
+    heat_score: int
+    matched_keywords: str
+    status: str
+    collected_at: datetime
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+class HotTopicStatusUpdate(BaseModel):
+    status: str
+
+class TrendConfigUpdate(BaseModel):
+    content: str

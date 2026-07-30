@@ -59,3 +59,26 @@ export const settingsApi = {
   get: (key) => request('/settings/' + key),
   set: (key, value) => request('/settings/' + key, { method: 'PUT', body: JSON.stringify({ value }) }),
 }
+
+export const trendsApi = {
+  list: (status, limit, offset) => {
+    const params = new URLSearchParams()
+    if (status) params.append('status', status)
+    if (limit) params.append('limit', limit)
+    if (offset) params.append('offset', offset)
+    return request('/trends?' + params.toString())
+  },
+  refresh: () => request('/trends/refresh', { method: 'POST' }),
+  crawl: () => request('/trends/crawl', { method: 'POST' }),
+  crawlStatus: () => request('/trends/crawl/status'),
+  aiAnalysis: () => request('/trends/ai-analysis'),
+  updateStatus: (id, status) => request('/trends/' + id + '/status', { method: 'PUT', body: JSON.stringify({ status }) }),
+  getFrequency: () => request('/trends/config/frequency'),
+  setFrequency: (content) => request('/trends/config/frequency', { method: 'PUT', body: JSON.stringify({ content }) }),
+  getInterests: () => request('/trends/config/interests'),
+  setInterests: (content) => request('/trends/config/interests', { method: 'PUT', body: JSON.stringify({ content }) }),
+  getGroups: () => request('/trends/config/groups'),
+  setGroups: (groups) => request('/trends/config/groups', { method: 'PUT', body: JSON.stringify(groups) }),
+  getAiConfig: () => request('/trends/config/ai'),
+  setAiConfig: (config) => request('/trends/config/ai', { method: 'PUT', body: JSON.stringify(config) }),
+}
