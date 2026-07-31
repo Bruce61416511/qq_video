@@ -221,6 +221,8 @@ def _parse_competitor_framework(competitor_framework: str) -> list:
             ta_parts = []
             if ta.get("age_range"): ta_parts.append(ta["age_range"])
             if ta.get("gender") and ta["gender"] != "不限": ta_parts.append(ta["gender"])
+            interests = ta.get("interests", [])
+            if interests: ta_parts.append("兴趣：" + "、".join(interests[:3]))
             pain_points = ta.get("pain_points", [])
             if pain_points: ta_parts.append("痛点：" + "；".join(pain_points[:3]))
             if ta_parts: parts.append(f"目标受众：{' / '.join(ta_parts)}")
@@ -237,10 +239,12 @@ def _parse_competitor_framework(competitor_framework: str) -> list:
                 dur = s.get("duration", "?")
                 stype = s.get("shot_type", "")
                 ssize = s.get("shot_size", "")
+                cam = s.get("camera_movement", "")
                 vdesc = s.get("visual_desc", "")
                 script = s.get("script", "")
                 ebeat = s.get("emotion_beat", "")
                 meta = f"{ssize}" if ssize else ""
+                if cam and cam != "固定": meta = f"{meta} {cam}" if meta else cam
                 if stype: meta = f"{meta} {stype}" if meta else stype
                 meta_str = f"（{dur}s {meta}）" if meta else f"（{dur}s）"
                 desc_parts = []
@@ -263,6 +267,8 @@ def _parse_competitor_framework(competitor_framework: str) -> list:
         if isinstance(rep, dict):
             copyable = rep.get("copyable_elements", [])
             if copyable: parts.append(f"可复用要素：{'；'.join(copyable[:5])}")
+            winning = rep.get("winning_factors", [])
+            if winning: parts.append(f"爆款因子：{'；'.join(winning[:3])}")
             improvements = rep.get("improvement_opportunities", [])
             if improvements: parts.append(f"改进空间：{'；'.join(improvements[:3])}")
     except:
@@ -390,11 +396,13 @@ async def generate_shot_plan_from_topic(
                     dur = s.get("duration", "?")
                     stype = s.get("shot_type", "")
                     ssize = s.get("shot_size", "")
+                    cam = s.get("camera_movement", "")
                     vdesc = s.get("visual_desc", "")
                     script = s.get("script", "")
                     ebeat = s.get("emotion_beat", "")
                     # Build shot line: size + type + visual + emotion_beat + script
                     meta = f"{ssize}" if ssize else ""
+                    if cam and cam != "固定": meta = f"{meta} {cam}" if meta else cam
                     if stype:
                         meta = f"{meta} {stype}" if meta else stype
                     meta_str = f"（{dur}s {meta}）" if meta else f"（{dur}s）"
@@ -654,3 +662,4 @@ async def analyze_competitor(source_text: str) -> dict:
         return {"error": "LLM 未返回有效 JSON", "raw": result}
     except Exception as e:
         return {"error": str(e)}
+        cam = s.get("camera_movement", "")

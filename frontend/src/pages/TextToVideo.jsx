@@ -379,7 +379,7 @@ export default function TextToVideo() {
                     <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>模板预览（将发送给 LLM）</div>
                     <div style={{ fontSize: 12, lineHeight: 1.8 }}>
                       <div style={{ display: 'flex', marginBottom: 2 }}>
-                        <span style={{ color: '#888', width: 48, flexShrink: 0 }}>风格</span>
+                        <span style={{ color: '#888', width: 56, flexShrink: 0 }}>风格</span>
                         <span>
                           {fw.style && <Tag color="blue" style={{fontSize:10}}>{fw.style}</Tag>}
                           {fw.tone && <Tag color="purple" style={{fontSize:10}}>{fw.tone}</Tag>}
@@ -387,33 +387,34 @@ export default function TextToVideo() {
                         </span>
                       </div>
                       <div style={{ display: 'flex', marginBottom: 2 }}>
-                        <span style={{ color: '#888', width: 48, flexShrink: 0 }}>时长</span>
+                        <span style={{ color: '#888', width: 56, flexShrink: 0 }}>时长</span>
                         <span>{fw.total_duration || '?'}s · {(fw.shots || []).length} 镜</span>
                       </div>
                       {fw.target_audience && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>受众</span>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>受众</span>
                           <span style={{ color: '#555' }}>
                             {fw.target_audience.age_range && <Tag color="green" style={{fontSize:10}}>{fw.target_audience.age_range}</Tag>}
                             {fw.target_audience.gender && fw.target_audience.gender !== '不限' && <Tag color="green" style={{fontSize:10}}>{fw.target_audience.gender}</Tag>}
+                            {fw.target_audience.interests?.slice(0,2).join(' · ')}
                             {fw.target_audience.pain_points?.slice(0,2).join(' · ')}
                           </span>
                         </div>
                       )}
                       {fw.hook?.hook_visual && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>钩子画面</span>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>钩子画面</span>
                           <span style={{ color: '#555' }}>{fw.hook.hook_visual.substring(0, 50)}{fw.hook.hook_visual.length > 50 ? '...' : ''}</span>
                         </div>
                       )}
                       {(fw.shots || []).length > 0 && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>分镜</span>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>分镜</span>
                           <div style={{ flex: 1 }}>
                             {fw.shots.map((s, i) => (
                               <div key={i} style={{ marginBottom: 2 }}>
                                 <Tag color="geekblue" style={{fontSize:10, marginRight:4}}>镜{s.index||i+1}</Tag>
-                                <span style={{color:'#888'}}>{s.duration}s {s.shot_size||''} {s.shot_type||''}</span>
+                                <span style={{color:'#888'}}>{s.duration}s {s.shot_size||''}{s.camera_movement && s.camera_movement !== '固定' ? ' ' + s.camera_movement : ''} {s.shot_type||''}</span>
                                 {s.emotion_beat && <Tag color="volcano" style={{fontSize:10, marginLeft:4}}>{s.emotion_beat}</Tag>}
                                 {s.visual_desc && <div style={{color:'#555', paddingLeft:4}}>{s.visual_desc.substring(0, 40)}{s.visual_desc.length > 40 ? '...' : ''}</div>}
                                 {s.script && <div style={{color:'#e67e22', paddingLeft:4, fontSize:11}}>🎤 {s.script.substring(0, 40)}{s.script.length > 40 ? '...' : ''}</div>}
@@ -424,19 +425,25 @@ export default function TextToVideo() {
                       )}
                       {fw.traffic_strategy?.cta_type && fw.traffic_strategy.cta_type !== '无' && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>CTA</span>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>CTA</span>
                           <span style={{ color: '#555' }}>{fw.traffic_strategy.cta_type}{fw.traffic_strategy.cta_placement ? `（第${fw.traffic_strategy.cta_placement}镜）` : ''}</span>
                         </div>
                       )}
                       {fw.replicability?.copyable_elements?.length > 0 && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>可复用</span>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>可复用</span>
                           <span style={{ color: '#555' }}>{fw.replicability.copyable_elements.slice(0, 3).join(' · ')}</span>
+                        </div>
+                      )}
+                      {fw.replicability?.winning_factors?.length > 0 && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>爆款因子</span>
+                          <span style={{ color: '#555' }}>{fw.replicability.winning_factors.slice(0, 3).join(' · ')}</span>
                         </div>
                       )}
                       {fw.replicability?.improvement_opportunities?.length > 0 && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>改进点</span>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>改进点</span>
                           <span style={{ color: '#555' }}>{fw.replicability.improvement_opportunities.slice(0, 2).join(' · ')}</span>
                         </div>
                       )}
@@ -548,7 +555,7 @@ export default function TextToVideo() {
                     <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>模板预览（将发送给 LLM）</div>
                     <div style={{ fontSize: 12, lineHeight: 1.8 }}>
                       <div style={{ display: 'flex', marginBottom: 2 }}>
-                        <span style={{ color: '#888', width: 48, flexShrink: 0 }}>风格</span>
+                        <span style={{ color: '#888', width: 56, flexShrink: 0 }}>风格</span>
                         <span>
                           {fw.style && <Tag color="blue" style={{fontSize:10}}>{fw.style}</Tag>}
                           {fw.tone && <Tag color="purple" style={{fontSize:10}}>{fw.tone}</Tag>}
@@ -556,33 +563,34 @@ export default function TextToVideo() {
                         </span>
                       </div>
                       <div style={{ display: 'flex', marginBottom: 2 }}>
-                        <span style={{ color: '#888', width: 48, flexShrink: 0 }}>时长</span>
+                        <span style={{ color: '#888', width: 56, flexShrink: 0 }}>时长</span>
                         <span>{fw.total_duration || '?'}s · {(fw.shots || []).length} 镜</span>
                       </div>
                       {fw.target_audience && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>受众</span>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>受众</span>
                           <span style={{ color: '#555' }}>
                             {fw.target_audience.age_range && <Tag color="green" style={{fontSize:10}}>{fw.target_audience.age_range}</Tag>}
                             {fw.target_audience.gender && fw.target_audience.gender !== '不限' && <Tag color="green" style={{fontSize:10}}>{fw.target_audience.gender}</Tag>}
+                            {fw.target_audience.interests?.slice(0,2).join(' · ')}
                             {fw.target_audience.pain_points?.slice(0,2).join(' · ')}
                           </span>
                         </div>
                       )}
                       {fw.hook?.hook_visual && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>钩子画面</span>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>钩子画面</span>
                           <span style={{ color: '#555' }}>{fw.hook.hook_visual.substring(0, 50)}{fw.hook.hook_visual.length > 50 ? '...' : ''}</span>
                         </div>
                       )}
                       {(fw.shots || []).length > 0 && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>分镜</span>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>分镜</span>
                           <div style={{ flex: 1 }}>
                             {fw.shots.map((s, i) => (
                               <div key={i} style={{ marginBottom: 2 }}>
                                 <Tag color="geekblue" style={{fontSize:10, marginRight:4}}>镜{s.index||i+1}</Tag>
-                                <span style={{color:'#888'}}>{s.duration}s {s.shot_size||''} {s.shot_type||''}</span>
+                                <span style={{color:'#888'}}>{s.duration}s {s.shot_size||''}{s.camera_movement && s.camera_movement !== '固定' ? ' ' + s.camera_movement : ''} {s.shot_type||''}</span>
                                 {s.emotion_beat && <Tag color="volcano" style={{fontSize:10, marginLeft:4}}>{s.emotion_beat}</Tag>}
                                 {s.visual_desc && <div style={{color:'#555', paddingLeft:4}}>{s.visual_desc.substring(0, 40)}{s.visual_desc.length > 40 ? '...' : ''}</div>}
                                 {s.script && <div style={{color:'#e67e22', paddingLeft:4, fontSize:11}}>🎤 {s.script.substring(0, 40)}{s.script.length > 40 ? '...' : ''}</div>}
@@ -593,19 +601,25 @@ export default function TextToVideo() {
                       )}
                       {fw.traffic_strategy?.cta_type && fw.traffic_strategy.cta_type !== '无' && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>CTA</span>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>CTA</span>
                           <span style={{ color: '#555' }}>{fw.traffic_strategy.cta_type}{fw.traffic_strategy.cta_placement ? `（第${fw.traffic_strategy.cta_placement}镜）` : ''}</span>
                         </div>
                       )}
                       {fw.replicability?.copyable_elements?.length > 0 && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>可复用</span>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>可复用</span>
                           <span style={{ color: '#555' }}>{fw.replicability.copyable_elements.slice(0, 3).join(' · ')}</span>
+                        </div>
+                      )}
+                      {fw.replicability?.winning_factors?.length > 0 && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>爆款因子</span>
+                          <span style={{ color: '#555' }}>{fw.replicability.winning_factors.slice(0, 3).join(' · ')}</span>
                         </div>
                       )}
                       {fw.replicability?.improvement_opportunities?.length > 0 && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>改进点</span>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>改进点</span>
                           <span style={{ color: '#555' }}>{fw.replicability.improvement_opportunities.slice(0, 2).join(' · ')}</span>
                         </div>
                       )}
