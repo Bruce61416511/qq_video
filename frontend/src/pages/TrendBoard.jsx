@@ -48,7 +48,9 @@ export default function TrendBoard() {
       const [files, methodRes] = await Promise.all([
         trendsApi.listConfigFiles(), trendsApi.getMethod(),
       ])
-      setConfigFiles(files.files || [])
+      // Only show config files relevant to TrendBoard (filter out TextToVideo/Competitor prompts)
+      const trendKeys = ["ai_interests", "frequency_words", "ai_analysis_prompt", "topic_to_video_prompt"]
+      setConfigFiles((files.files || []).filter(f => trendKeys.includes(f.key)))
       setFilterMethod(methodRes.method || "ai")
     } catch (e) { /**/ }
   }

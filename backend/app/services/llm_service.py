@@ -22,7 +22,7 @@ def _load_prompt(filename: str, fallback: str) -> str:
     """从配置文件读取提示词，文件不存在时使用硬编码兜底。"""
     p = PROMPT_DIR / filename
     if p.exists():
-        return p.read_text(encoding="utf-8").strip()
+        return p.read_text(encoding="utf-8-sig").strip()
     return fallback
 
 SYSTEM_PROMPT = _load_prompt(
