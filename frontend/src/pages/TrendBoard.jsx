@@ -223,19 +223,12 @@ export default function TrendBoard() {
                 key={i}
                 size="small"
                 style={{ marginBottom: 12 }}
-                title={
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{
-                      width: 22, height: 22, borderRadius: 11,
-                      background: "#005d50", color: "#fff",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 11, fontWeight: 700, flexShrink: 0
-                    }}>{i + 1}</span>
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: 14, fontWeight: 600 }}>{t.video_topic}</span>
-                    <span style={{ fontSize: 11, color: "#888" }}>{t.duration || 30}s</span>
+                    <span style={{ fontSize: 11, color: '#888' }}>{t.duration || 30}s</span>
                   </div>
-                }
-                extra={
                   <Button
                     type="primary"
                     size="small"
@@ -244,54 +237,51 @@ export default function TrendBoard() {
                   >
                     去制作
                   </Button>
-                }
-              >
-                <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
-                  <tbody>
-                    {t.source_title && (
-                      <tr>
-                        <td style={{ color: "#888", padding: "2px 8px 2px 0", whiteSpace: "nowrap", verticalAlign: "top", width: 70 }}>来源</td>
-                        <td style={{ padding: "2px 0" }}>
-                          <a href={t.source_url} target="_blank" rel="noreferrer" style={{ color: "#4f46e5" }}>{t.source_title}</a>
-                        </td>
-                      </tr>
-                    )}
-                    <tr>
-                      <td style={{ color: "#888", padding: "2px 8px 2px 0", whiteSpace: "nowrap", verticalAlign: "top", width: 70 }}>标签</td>
-                      <td style={{ padding: "2px 0" }}>
-                        {t.hook_type && <Tag color="orange" style={{ fontSize: 11 }}>{t.hook_type}</Tag>}
-                        {t.target_emotion && <Tag color="default" style={{ fontSize: 11 }}>{t.target_emotion}</Tag>}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style={{ color: "#e67e22", fontWeight: 600, padding: "4px 8px 4px 0", whiteSpace: "nowrap", verticalAlign: "top", width: 70 }}>黄金3秒</td>
-                      <td style={{ padding: "4px 0", fontWeight: 500, color: "#333" }}>{t.hook}</td>
-                    </tr>
-                    <tr>
-                      <td style={{ color: "#888", padding: "2px 8px 2px 0", whiteSpace: "nowrap", verticalAlign: "top", width: 70 }}>角度</td>
-                      <td style={{ padding: "2px 0", color: "#555" }}>{t.angle}</td>
-                    </tr>
-                    {t.content_outline?.length > 0 && (
-                      <tr>
-                        <td style={{ color: "#888", padding: "4px 8px 4px 0", whiteSpace: "nowrap", verticalAlign: "top", width: 70 }}>要点</td>
-                        <td style={{ padding: "4px 0" }}>
-                          {t.content_outline.map((p, j) => (
-                            <div key={j} style={{ display: "flex", alignItems: "flex-start", padding: "3px 0", gap: 6 }}>
-                              <span style={{ width: 4, height: 4, borderRadius: 2, background: "#005d50", flexShrink: 0, marginTop: 7 }} />
-                              <span style={{ fontSize: 12, lineHeight: "18px", color: "#333" }}>{p}</span>
-                            </div>
-                          ))}
-                        </td>
-                      </tr>
-                    )}
-                    {t.product_link && t.product_link !== "纯养号内容暂不植入" && (
-                      <tr>
-                        <td style={{ color: "#888", padding: "4px 8px 2px 0", whiteSpace: "nowrap", verticalAlign: "top", width: 70 }}>产品</td>
-                        <td style={{ padding: "4px 0", fontSize: 12, color: "#666" }}>{t.product_link}</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                </div>
+                <div style={{ fontSize: 12, lineHeight: 1.8 }}>
+                  {t.source_title && (
+                    <div style={{ display: 'flex', marginBottom: 2 }}>
+                      <span style={{ color: '#888', width: 56, flexShrink: 0 }}>来源</span>
+                      <span><a href={t.source_url} target="_blank" rel="noreferrer" style={{ color: '#4f46e5' }}>{t.source_title}</a></span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', marginBottom: 2 }}>
+                    <span style={{ color: '#888', width: 56, flexShrink: 0 }}>钩子</span>
+                    <span>
+                      {t.hook_type && <Tag color="orange" style={{fontSize:10}}>{t.hook_type}</Tag>}
+                      <span style={{color:'#e67e22',fontWeight:500}}>{t.hook}</span>
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', marginBottom: 2 }}>
+                    <span style={{ color: '#888', width: 56, flexShrink: 0 }}>角度</span>
+                    <span style={{ color: '#555' }}>{t.angle}</span>
+                  </div>
+                  {t.content_outline?.length > 0 && (
+                    <div style={{ display: 'flex', marginBottom: 2 }}>
+                      <span style={{ color: '#888', width: 56, flexShrink: 0 }}>要点</span>
+                      <span>
+                        {t.content_outline.map((p, j) => (
+                          <div key={j} style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: 1 }}>
+                            <span style={{ width: 4, height: 4, borderRadius: 2, background: '#888', flexShrink: 0, marginTop: 7 }} />
+                            <span style={{ color: '#333' }}>{p}</span>
+                          </div>
+                        ))}
+                      </span>
+                    </div>
+                  )}
+                  {t.target_emotion && (
+                    <div style={{ display: 'flex', marginBottom: 2 }}>
+                      <span style={{ color: '#888', width: 56, flexShrink: 0 }}>情绪</span>
+                      <span style={{ color: '#555' }}>{t.target_emotion}</span>
+                    </div>
+                  )}
+                  {t.product_link && t.product_link !== "纯养号内容暂不植入" && (
+                    <div style={{ display: 'flex' }}>
+                      <span style={{ color: '#888', width: 56, flexShrink: 0 }}>产品</span>
+                      <span style={{ color: '#555' }}>{t.product_link}</span>
+                    </div>
+                  )}
+                </div>
               </Card>
             ))
           )}

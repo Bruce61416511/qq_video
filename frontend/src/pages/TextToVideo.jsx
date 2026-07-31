@@ -281,41 +281,178 @@ export default function TextToVideo() {
 
       {selectedTopic ? (
         <div>
-          <Card size="small" style={{ background: '#eefcf8', border: '1px solid #a9ebe0', marginBottom: 16 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>✅ 选题确认</div>
-            {selectedTopic.source_title && <p style={{ margin: '4px 0', fontSize: 12, color: '#888' }}>📰 来源：{selectedTopic.source_title}</p>}
-            <p style={{ margin: '4px 0', fontSize: 13 }}><strong>标题：</strong>{selectedTopic.video_topic}</p>
-            {selectedTopic.angle && <p style={{ margin: '4px 0', fontSize: 13 }}><strong>角度：</strong>{selectedTopic.angle}</p>}
-            <div style={{ margin: '4px 0', fontSize: 13, color: '#e67e22' }}>
-              <strong>⚡ 黄金3秒：</strong>{selectedTopic.hook}
-              {selectedTopic.hook_type && <Tag color="orange" style={{fontSize:11,marginLeft:8}}>{selectedTopic.hook_type}</Tag>}
-            </div>
-            {selectedTopic.content_outline?.length > 0 && (
-              <div style={{ margin: '8px 0 0' }}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: '#333' }}>
-                  📝 内容结构 · {selectedTopic.content_outline.length} 个要点
-                </div>
-                {selectedTopic.content_outline.map((p, i) => (
-                  <div key={i} style={{
-                    display: 'flex', alignItems: 'flex-start',
-                    padding: '8px 10px', marginBottom: 6,
-                    background: '#f7f8fa', borderRadius: 8,
-                    
-                    gap: 8
-                  }}>
-                    <span style={{
-                      width: 6, height: 6, borderRadius: 3,
-                      background: '#333', flexShrink: 0, marginTop: 8
-                    }} />
-                    <span style={{ fontSize: 13, lineHeight: '22px', color: '#333' }}>{p}</span>
-                  </div>
-                ))}
+          <Card size="small" style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>选题确认</div>
+            <div style={{ fontSize: 12, lineHeight: 1.8 }}>
+              <div style={{ display: 'flex', marginBottom: 2 }}>
+                <span style={{ color: '#888', width: 56, flexShrink: 0 }}>标题</span>
+                <span style={{ fontWeight: 500 }}>{selectedTopic.video_topic}</span>
               </div>
-            )}
-            <div style={{ marginTop: 8, fontSize: 13, color: '#888' }}>
-              ⏱ 总长 {selectedTopic.duration || 45}s · 自动拆 {shotCount} 镜 · 每镜 {shotDuration}s
+              {selectedTopic.angle && (
+                <div style={{ display: 'flex', marginBottom: 2 }}>
+                  <span style={{ color: '#888', width: 56, flexShrink: 0 }}>角度</span>
+                  <span style={{ color: '#555' }}>{selectedTopic.angle}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', marginBottom: 2 }}>
+                <span style={{ color: '#888', width: 56, flexShrink: 0 }}>钩子</span>
+                <span>
+                  {selectedTopic.hook_type && <Tag color="orange" style={{fontSize:10}}>{selectedTopic.hook_type}</Tag>}
+                  <span style={{color:'#e67e22',fontWeight:500}}>{selectedTopic.hook}</span>
+                </span>
+              </div>
+              {selectedTopic.content_outline?.length > 0 && (
+                <div style={{ display: 'flex', marginBottom: 2 }}>
+                  <span style={{ color: '#888', width: 56, flexShrink: 0 }}>要点</span>
+                  <span>
+                    {selectedTopic.content_outline.map((p, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: 2 }}>
+                        <span style={{ width: 4, height: 4, borderRadius: 2, background: '#888', flexShrink: 0, marginTop: 7 }} />
+                        <span style={{ color: '#333' }}>{p}</span>
+                      </div>
+                    ))}
+                  </span>
+                </div>
+              )}
+              {selectedTopic.target_emotion && (
+                <div style={{ display: 'flex', marginBottom: 2 }}>
+                  <span style={{ color: '#888', width: 56, flexShrink: 0 }}>情绪</span>
+                  <span style={{ color: '#555' }}>{selectedTopic.target_emotion}</span>
+                </div>
+              )}
+              {selectedTopic.product_link && selectedTopic.product_link !== '纯养号内容暂不植入' && (
+                <div style={{ display: 'flex', marginBottom: 2 }}>
+                  <span style={{ color: '#888', width: 56, flexShrink: 0 }}>产品</span>
+                  <span style={{ color: '#555' }}>{selectedTopic.product_link}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex' }}>
+                <span style={{ color: '#888', width: 56, flexShrink: 0 }}>时长</span>
+                <span>{selectedTopic.duration || 45}s · 自动拆 {shotCount} 镜 · 每镜 {shotDuration}s</span>
+              </div>
             </div>
           </Card>
+
+          {/* 竞品模板参考 */}
+          {competitorTemplates.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <span style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 8 }}>
+                竞品参考模板（可选）
+              </span>
+              <Select
+                placeholder="不参考竞品模板..."
+                style={{ width: '100%' }}
+                allowClear
+                value={selectedTemplateId}
+                onChange={setSelectedTemplateId}
+                options={competitorTemplates.map(t => ({
+                  value: t.id,
+                  label: t.name,
+                }))}
+              />
+              {selectedTemplateId && (() => {
+                const tpl = competitorTemplates.find(t => t.id === selectedTemplateId)
+                if (!tpl) return null
+                let fw = {}
+                try { fw = JSON.parse(tpl.framework) } catch {}
+                return (
+                  <Card size="small" style={{ marginTop: 8, background: '#fafafa' }}>
+                    <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>模板预览</div>
+                    <div style={{ fontSize: 12, lineHeight: 1.8 }}>
+                      <div style={{ display: 'flex', marginBottom: 2 }}>
+                        <span style={{ color: '#888', width: 48, flexShrink: 0 }}>风格</span>
+                        <span>
+                          {fw.style && <Tag color="blue" style={{fontSize:10}}>{fw.style}</Tag>}
+                          {fw.tone && <Tag color="purple" style={{fontSize:10}}>{fw.tone}</Tag>}
+                          {fw.narrative_arc && <Tag color="cyan" style={{fontSize:10}}>{fw.narrative_arc}</Tag>}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', marginBottom: 2 }}>
+                        <span style={{ color: '#888', width: 48, flexShrink: 0 }}>结构</span>
+                        <span>{fw.total_duration || '?'}s · {(fw.shots || []).length} 镜</span>
+                      </div>
+                      {fw.hook && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>钩子</span>
+                          <span>
+                            {fw.hook.hook_type && <Tag color="orange" style={{fontSize:10}}>{fw.hook.hook_type}</Tag>}
+                            <span style={{color:'#333'}}>{fw.hook.hook_text}</span>
+                            {fw.hook.hook_visual && <span style={{fontSize:11,color:'#999',marginLeft:4}}>| {fw.hook.hook_visual}</span>}
+                          </span>
+                        </div>
+                      )}
+                      {fw.audio && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>音频</span>
+                          <span>
+                            {fw.audio.bgm_style && <Tag color="magenta" style={{fontSize:10}}>{fw.audio.bgm_style}</Tag>}
+                            {fw.audio.bgm_emotion_curve && <span style={{color:'#666'}}>{fw.audio.bgm_emotion_curve}</span>}
+                          </span>
+                        </div>
+                      )}
+                      {fw.traffic_strategy && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>策略</span>
+                          <span>
+                            {fw.traffic_strategy.cta_type && <Tag color="red" style={{fontSize:10}}>{fw.traffic_strategy.cta_type}{fw.traffic_strategy.cta_placement > 0 ? ' 镜'+fw.traffic_strategy.cta_placement : ''}</Tag>}
+                            {fw.traffic_strategy.retention_tactics?.slice(0,3).map((v,j) => <Tag key={j} color="blue" style={{fontSize:10,marginBottom:2}}>{v}</Tag>)}
+                          </span>
+                        </div>
+                      )}
+                      {fw.shots?.length > 0 && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>分镜</span>
+                          <span>
+                            {fw.shots.slice(0,6).map((s,j) => (
+                              <Tag key={j} color="geekblue" style={{fontSize:10,marginBottom:2}}>
+                                镜{s.index} {s.shot_type} {s.shot_size}
+                              </Tag>
+                            ))}
+                          </span>
+                        </div>
+                      )}
+
+
+                      {fw.target_audience && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>人群</span>
+                          <span>
+                            {fw.target_audience.age_range && <Tag color="purple" style={{fontSize:10}}>{fw.target_audience.age_range}岁</Tag>}
+                            {fw.target_audience.gender && fw.target_audience.gender !== '不限' && <Tag color="purple" style={{fontSize:10}}>{fw.target_audience.gender}</Tag>}
+                            {fw.target_audience.interests?.slice(0,3).map((v,j) => <Tag key={j} color="blue" style={{fontSize:10,marginBottom:2}}>{v}</Tag>)}
+                          </span>
+                        </div>
+                      )}
+                      {fw.replicability?.winning_factors?.length > 0 && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>爆款</span>
+                          <span>
+                            {fw.replicability.winning_factors.slice(0,3).map((v,j) => <Tag key={j} color="volcano" style={{fontSize:10,marginBottom:2}}>{v}</Tag>)}
+                          </span>
+                        </div>
+                      )}
+                      {fw.replicability?.copyable_elements?.length > 0 && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>可复用</span>
+                          <span>
+                            {fw.replicability.copyable_elements.slice(0,3).map((v,j) => <Tag key={j} color="green" style={{fontSize:10,marginBottom:2}}>{v}</Tag>)}
+                          </span>
+                        </div>
+                      )}
+                      {fw.replicability?.improvement_opportunities?.length > 0 && (
+                        <div style={{ display: 'flex' }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>改进</span>
+                          <span>
+                            {fw.replicability.improvement_opportunities.slice(0,2).map((v,j) => <Tag key={j} style={{fontSize:10,marginBottom:2}}>{v}</Tag>)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                )
+              })()}
+            </div>
+          )}
 
           <Space size="middle" wrap>
             <div>
@@ -396,7 +533,6 @@ export default function TextToVideo() {
         </div>
         {selectedTopic ? (
           <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.8 }}>
-            {selectedTopic.source_title && <div style={{ color: '#888', fontSize: 12 }}>📰 来源：{selectedTopic.source_title}</div>}
             <div><strong>标题：</strong>{selectedTopic.video_topic}</div>
             {selectedTopic.hook_type && <div><strong>🎯 钩子类型：</strong><Tag color="orange">{selectedTopic.hook_type}</Tag></div>}
             {selectedTopic.angle && <div><strong>角度：</strong>{selectedTopic.angle}</div>}
