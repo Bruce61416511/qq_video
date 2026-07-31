@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Steps, Input, Button, Card, App, Select, Tabs, Drawer, List,
   Space, Tag, Tooltip, Alert, Popconfirm, Divider, Progress, Timeline, Typography
@@ -35,6 +35,7 @@ const DURATION_OPTIONS = [
 
 export default function TextToVideo() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { message } = App.useApp()
 
   // Video topics from trends
@@ -61,6 +62,14 @@ export default function TextToVideo() {
     fetch("http://localhost:8000/api/media/competitor-templates")
       .then(r => r.json()).then(d => setCompetitorTemplates(Array.isArray(d) ? d : [])).catch(() => {})
   }, [])
+  // Auto-select topic from URL param (from TrendBoard)
+  useEffect(() => {
+    const idx = searchParams.get("topic")
+    if (idx != null && videoTopics.length > 0) {
+      handleTopicSelect(parseInt(idx))
+    }
+  }, [videoTopics, searchParams])
+
   // 切换路由后恢复分镜状态
   useEffect(() => {
     try {
