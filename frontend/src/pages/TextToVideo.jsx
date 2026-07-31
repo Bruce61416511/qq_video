@@ -1,14 +1,14 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  Steps, Input, Button, Card, App, Select, Tabs, Drawer, List,
+  Steps, Input, Button, Card, App, Select, Tabs, Drawer, List, Modal,
   Space, Tag, Tooltip, Alert, Popconfirm, Divider, Progress, Timeline, Typography
 } from 'antd'
 import {
   ThunderboltOutlined, LoadingOutlined, CheckCircleOutlined,
   EditOutlined, FileTextOutlined, FileProtectOutlined, SettingOutlined,
   ReloadOutlined, ArrowRightOutlined,
-  ArrowLeftOutlined, VideoCameraOutlined
+  ArrowLeftOutlined, VideoCameraOutlined, EyeOutlined
 } from '@ant-design/icons'
 import { mediaApi, trendsApi } from '../services/api'
 
@@ -44,6 +44,9 @@ export default function TextToVideo() {
   const [selectedTopic, setSelectedTopic] = useState(null)
   const [selectedTemplateId, setSelectedTemplateId] = useState(null)
   const [competitorTemplates, setCompetitorTemplates] = useState([])
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewData, setPreviewData] = useState(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
   const [activeTab, setActiveTab] = useState("video")
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false)
   const [editingFile, setEditingFile] = useState(null)
@@ -189,7 +192,15 @@ export default function TextToVideo() {
     if (!topic.trim()) { message.warning('请输入视频主题'); return }
     setShotsLoading(true)
     try {
-      const data = await mediaApi.generateShots(topic.trim(), shotCount, shotDuration)
+      let data
+      if (selectedTemplateId) {
+        const tpl = competitorTemplates.find(t => t.id === selectedTemplateId)
+        const manualData = { video_topic: topic.trim(), angle: '', hook: topic.trim().substring(0, 30), hook_type: '', content_outline: topic.trim().split(/[\n,，]/).filter(Boolean), target_emotion: '', product_link: '', duration: parseInt(shotDuration) * (parseInt(shotCount) || 3) }
+        if (tpl) manualData.competitor_framework = tpl.framework
+        data = await mediaApi.generateShotsFromTopic(manualData)
+      } else {
+        data = await mediaApi.generateShots(topic.trim(), shotCount, shotDuration)
+      }
       setShots(data.shots || [])
       setCurrent(1)
       message.success(`已生成 ${data.shots.length} 个分镜方案`)
@@ -333,7 +344,18 @@ export default function TextToVideo() {
             </div>
           </Card>
 
-          {/* 竞品模板参考 */}
+          <Space size="middle" wrap>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>画面比例</span>
+              <Select value={size} onChange={setSize} options={SIZE_OPTIONS} style={{ width: 120 }} />
+            </div>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>分辨率</span>
+              <Select value={resolution} onChange={setResolution} options={RESOLUTION_OPTIONS} style={{ width: 100 }} />
+            </div>
+          </Space>
+
+          {/* 竞品模板参考（手动+选题均可使用） */}
           {competitorTemplates.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <span style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 8 }}>
@@ -357,7 +379,7 @@ export default function TextToVideo() {
                 try { fw = JSON.parse(tpl.framework) } catch {}
                 return (
                   <Card size="small" style={{ marginTop: 8, background: '#fafafa' }}>
-                    <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>模板预览</div>
+                    <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>模板预览（将发送给 LLM）</div>
                     <div style={{ fontSize: 12, lineHeight: 1.8 }}>
                       <div style={{ display: 'flex', marginBottom: 2 }}>
                         <span style={{ color: '#888', width: 48, flexShrink: 0 }}>风格</span>
@@ -368,83 +390,57 @@ export default function TextToVideo() {
                         </span>
                       </div>
                       <div style={{ display: 'flex', marginBottom: 2 }}>
-                        <span style={{ color: '#888', width: 48, flexShrink: 0 }}>结构</span>
+                        <span style={{ color: '#888', width: 48, flexShrink: 0 }}>时长</span>
                         <span>{fw.total_duration || '?'}s · {(fw.shots || []).length} 镜</span>
                       </div>
-                      {fw.hook && (
-                        <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>钩子</span>
-                          <span>
-                            {fw.hook.hook_type && <Tag color="orange" style={{fontSize:10}}>{fw.hook.hook_type}</Tag>}
-                            <span style={{color:'#333'}}>{fw.hook.hook_text}</span>
-                            {fw.hook.hook_visual && <span style={{fontSize:11,color:'#999',marginLeft:4}}>| {fw.hook.hook_visual}</span>}
-                          </span>
-                        </div>
-                      )}
-                      {fw.audio && (
-                        <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>音频</span>
-                          <span>
-                            {fw.audio.bgm_style && <Tag color="magenta" style={{fontSize:10}}>{fw.audio.bgm_style}</Tag>}
-                            {fw.audio.bgm_emotion_curve && <span style={{color:'#666'}}>{fw.audio.bgm_emotion_curve}</span>}
-                          </span>
-                        </div>
-                      )}
-                      {fw.traffic_strategy && (
-                        <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>策略</span>
-                          <span>
-                            {fw.traffic_strategy.cta_type && <Tag color="red" style={{fontSize:10}}>{fw.traffic_strategy.cta_type}{fw.traffic_strategy.cta_placement > 0 ? ' 镜'+fw.traffic_strategy.cta_placement : ''}</Tag>}
-                            {fw.traffic_strategy.retention_tactics?.slice(0,3).map((v,j) => <Tag key={j} color="blue" style={{fontSize:10,marginBottom:2}}>{v}</Tag>)}
-                          </span>
-                        </div>
-                      )}
-                      {fw.shots?.length > 0 && (
-                        <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>分镜</span>
-                          <span>
-                            {fw.shots.slice(0,6).map((s,j) => (
-                              <Tag key={j} color="geekblue" style={{fontSize:10,marginBottom:2}}>
-                                镜{s.index} {s.shot_type} {s.shot_size}
-                              </Tag>
-                            ))}
-                          </span>
-                        </div>
-                      )}
-
-
                       {fw.target_audience && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>人群</span>
-                          <span>
-                            {fw.target_audience.age_range && <Tag color="purple" style={{fontSize:10}}>{fw.target_audience.age_range}岁</Tag>}
-                            {fw.target_audience.gender && fw.target_audience.gender !== '不限' && <Tag color="purple" style={{fontSize:10}}>{fw.target_audience.gender}</Tag>}
-                            {fw.target_audience.interests?.slice(0,3).map((v,j) => <Tag key={j} color="blue" style={{fontSize:10,marginBottom:2}}>{v}</Tag>)}
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>受众</span>
+                          <span style={{ color: '#555' }}>
+                            {fw.target_audience.age_range && <Tag color="green" style={{fontSize:10}}>{fw.target_audience.age_range}</Tag>}
+                            {fw.target_audience.gender && fw.target_audience.gender !== '不限' && <Tag color="green" style={{fontSize:10}}>{fw.target_audience.gender}</Tag>}
+                            {fw.target_audience.pain_points?.slice(0,2).join(' · ')}
                           </span>
                         </div>
                       )}
-                      {fw.replicability?.winning_factors?.length > 0 && (
+                      {fw.hook?.hook_visual && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>爆款</span>
-                          <span>
-                            {fw.replicability.winning_factors.slice(0,3).map((v,j) => <Tag key={j} color="volcano" style={{fontSize:10,marginBottom:2}}>{v}</Tag>)}
-                          </span>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>钩子画面</span>
+                          <span style={{ color: '#555' }}>{fw.hook.hook_visual.substring(0, 50)}{fw.hook.hook_visual.length > 50 ? '...' : ''}</span>
+                        </div>
+                      )}
+                      {(fw.shots || []).length > 0 && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>分镜</span>
+                          <div style={{ flex: 1 }}>
+                            {fw.shots.slice(0, 5).map((s, i) => (
+                              <div key={i} style={{ marginBottom: 2 }}>
+                                <Tag color="geekblue" style={{fontSize:10, marginRight:4}}>镜{s.index||i+1}</Tag>
+                                <span style={{color:'#888'}}>{s.duration}s {s.shot_size||''} {s.shot_type||''}</span>
+                                {s.emotion_beat && <Tag color="volcano" style={{fontSize:10, marginLeft:4}}>{s.emotion_beat}</Tag>}
+                                {s.visual_desc && <div style={{color:'#555', paddingLeft:4}}>{s.visual_desc.substring(0, 40)}{s.visual_desc.length > 40 ? '...' : ''}</div>}
+                                {s.script && <div style={{color:'#e67e22', paddingLeft:4, fontSize:11}}>🎤 {s.script.substring(0, 40)}{s.script.length > 40 ? '...' : ''}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {fw.traffic_strategy?.cta_type && fw.traffic_strategy.cta_type !== '无' && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>CTA</span>
+                          <span style={{ color: '#555' }}>{fw.traffic_strategy.cta_type}{fw.traffic_strategy.cta_placement ? `（第${fw.traffic_strategy.cta_placement}镜）` : ''}</span>
                         </div>
                       )}
                       {fw.replicability?.copyable_elements?.length > 0 && (
                         <div style={{ display: 'flex', marginBottom: 2 }}>
                           <span style={{ color: '#888', width: 48, flexShrink: 0 }}>可复用</span>
-                          <span>
-                            {fw.replicability.copyable_elements.slice(0,3).map((v,j) => <Tag key={j} color="green" style={{fontSize:10,marginBottom:2}}>{v}</Tag>)}
-                          </span>
+                          <span style={{ color: '#555' }}>{fw.replicability.copyable_elements.slice(0, 3).join(' · ')}</span>
                         </div>
                       )}
                       {fw.replicability?.improvement_opportunities?.length > 0 && (
-                        <div style={{ display: 'flex' }}>
-                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>改进</span>
-                          <span>
-                            {fw.replicability.improvement_opportunities.slice(0,2).map((v,j) => <Tag key={j} style={{fontSize:10,marginBottom:2}}>{v}</Tag>)}
-                          </span>
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>改进点</span>
+                          <span style={{ color: '#555' }}>{fw.replicability.improvement_opportunities.slice(0, 2).join(' · ')}</span>
                         </div>
                       )}
                     </div>
@@ -454,24 +450,42 @@ export default function TextToVideo() {
             </div>
           )}
 
-          <Space size="middle" wrap>
-            <div>
-              <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>画面比例</span>
-              <Select value={size} onChange={setSize} options={SIZE_OPTIONS} style={{ width: 120 }} />
-            </div>
-            <div>
-              <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>分辨率</span>
-              <Select value={resolution} onChange={setResolution} options={RESOLUTION_OPTIONS} style={{ width: 100 }} />
-            </div>
-          </Space>
-
           <div style={{ marginTop: 24 }}>
-            <Button type="primary" size="large" block loading={shotsLoading}
-              onClick={handleGenerateShots}
-              icon={<ThunderboltOutlined />}>
-              🎬 一键生成分镜方案
-            </Button>
+            <Space.Compact block>
+              <Button type="primary" size="large" style={{ width: "75%" }} loading={shotsLoading}
+                onClick={handleGenerateShots}
+                icon={<ThunderboltOutlined />}>
+                🎬 一键生成分镜方案
+              </Button>
+              <Button size="large" style={{ width: "25%" }} loading={previewLoading}
+                onClick={async () => {
+                  setPreviewLoading(true);
+                  try {
+                    const topicData = selectedTopic ? { ...selectedTopic } : { video_topic: topic, content_outline: [] };
+                    if (selectedTemplateId) {
+                      const tpl = competitorTemplates.find(t => t.id === selectedTemplateId);
+                      if (tpl) topicData.competitor_framework = tpl.framework;
+                    }
+                    const res = await fetch("http://localhost:8000/api/media/generate-shots-preview", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(topicData),
+                    });
+                    const data = await res.json();
+                    setPreviewData(data);
+                    setPreviewOpen(true);
+                  } catch (e) {
+                    message.error("预览失败: " + e.message);
+                  } finally {
+                    setPreviewLoading(false);
+                  }
+                }}
+                icon={<EyeOutlined />}>
+                预览
+              </Button>
+            </Space.Compact>
           </div>
+          
         </div>
       ) : (
         <>
@@ -510,12 +524,135 @@ export default function TextToVideo() {
             </div>
           </Space>
 
+          {/* 竞品模板参考 */}
+          {competitorTemplates.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <span style={{ fontWeight: 600, fontSize: 14, display: 'block', marginBottom: 8 }}>
+                竞品参考模板（可选）
+              </span>
+              <Select
+                placeholder="不参考竞品模板..."
+                style={{ width: '100%' }}
+                allowClear
+                value={selectedTemplateId}
+                onChange={setSelectedTemplateId}
+                options={competitorTemplates.map(t => ({
+                  value: t.id,
+                  label: t.name,
+                }))}
+              />
+              {selectedTemplateId && (() => {
+                const tpl = competitorTemplates.find(t => t.id === selectedTemplateId)
+                if (!tpl) return null
+                let fw = {}
+                try { fw = JSON.parse(tpl.framework) } catch {}
+                return (
+                  <Card size="small" style={{ marginTop: 8, background: '#fafafa' }}>
+                    <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>模板预览（将发送给 LLM）</div>
+                    <div style={{ fontSize: 12, lineHeight: 1.8 }}>
+                      <div style={{ display: 'flex', marginBottom: 2 }}>
+                        <span style={{ color: '#888', width: 48, flexShrink: 0 }}>风格</span>
+                        <span>
+                          {fw.style && <Tag color="blue" style={{fontSize:10}}>{fw.style}</Tag>}
+                          {fw.tone && <Tag color="purple" style={{fontSize:10}}>{fw.tone}</Tag>}
+                          {fw.narrative_arc && <Tag color="cyan" style={{fontSize:10}}>{fw.narrative_arc}</Tag>}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', marginBottom: 2 }}>
+                        <span style={{ color: '#888', width: 48, flexShrink: 0 }}>时长</span>
+                        <span>{fw.total_duration || '?'}s · {(fw.shots || []).length} 镜</span>
+                      </div>
+                      {fw.target_audience && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>受众</span>
+                          <span style={{ color: '#555' }}>
+                            {fw.target_audience.age_range && <Tag color="green" style={{fontSize:10}}>{fw.target_audience.age_range}</Tag>}
+                            {fw.target_audience.gender && fw.target_audience.gender !== '不限' && <Tag color="green" style={{fontSize:10}}>{fw.target_audience.gender}</Tag>}
+                            {fw.target_audience.pain_points?.slice(0,2).join(' · ')}
+                          </span>
+                        </div>
+                      )}
+                      {fw.hook?.hook_visual && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>钩子画面</span>
+                          <span style={{ color: '#555' }}>{fw.hook.hook_visual.substring(0, 50)}{fw.hook.hook_visual.length > 50 ? '...' : ''}</span>
+                        </div>
+                      )}
+                      {(fw.shots || []).length > 0 && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>分镜</span>
+                          <div style={{ flex: 1 }}>
+                            {fw.shots.slice(0, 5).map((s, i) => (
+                              <div key={i} style={{ marginBottom: 2 }}>
+                                <Tag color="geekblue" style={{fontSize:10, marginRight:4}}>镜{s.index||i+1}</Tag>
+                                <span style={{color:'#888'}}>{s.duration}s {s.shot_size||''} {s.shot_type||''}</span>
+                                {s.emotion_beat && <Tag color="volcano" style={{fontSize:10, marginLeft:4}}>{s.emotion_beat}</Tag>}
+                                {s.visual_desc && <div style={{color:'#555', paddingLeft:4}}>{s.visual_desc.substring(0, 40)}{s.visual_desc.length > 40 ? '...' : ''}</div>}
+                                {s.script && <div style={{color:'#e67e22', paddingLeft:4, fontSize:11}}>🎤 {s.script.substring(0, 40)}{s.script.length > 40 ? '...' : ''}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {fw.traffic_strategy?.cta_type && fw.traffic_strategy.cta_type !== '无' && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>CTA</span>
+                          <span style={{ color: '#555' }}>{fw.traffic_strategy.cta_type}{fw.traffic_strategy.cta_placement ? `（第${fw.traffic_strategy.cta_placement}镜）` : ''}</span>
+                        </div>
+                      )}
+                      {fw.replicability?.copyable_elements?.length > 0 && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>可复用</span>
+                          <span style={{ color: '#555' }}>{fw.replicability.copyable_elements.slice(0, 3).join(' · ')}</span>
+                        </div>
+                      )}
+                      {fw.replicability?.improvement_opportunities?.length > 0 && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 48, flexShrink: 0 }}>改进点</span>
+                          <span style={{ color: '#555' }}>{fw.replicability.improvement_opportunities.slice(0, 2).join(' · ')}</span>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                )
+              })()}
+            </div>
+          )}
+
           <div style={{ marginTop: 24 }}>
-            <Button type="primary" size="large" block loading={shotsLoading}
-              onClick={handleGenerateShots}
-              icon={<ThunderboltOutlined />}>
-              生成分镜方案
-            </Button>
+            <Space.Compact block>
+              <Button type="primary" size="large" style={{ width: "75%" }} loading={shotsLoading}
+                onClick={handleGenerateShots}
+                icon={<ThunderboltOutlined />}>
+                生成分镜方案
+              </Button>
+              <Button size="large" style={{ width: "25%" }} loading={previewLoading}
+                onClick={async () => {
+                  setPreviewLoading(true);
+                  try {
+                    const manualData = { video_topic: topic.trim(), angle: '', hook: topic.trim().substring(0, 30), hook_type: '', content_outline: topic.trim().split(/[\n,，]/).filter(Boolean), target_emotion: '', product_link: '', duration: parseInt(shotDuration) * (parseInt(shotCount) || 3) };
+                    if (selectedTemplateId) {
+                      const tpl = competitorTemplates.find(t => t.id === selectedTemplateId);
+                      if (tpl) manualData.competitor_framework = tpl.framework;
+                    }
+                    const res = await fetch("http://localhost:8000/api/media/generate-shots-preview", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(manualData),
+                    });
+                    const data = await res.json();
+                    setPreviewData(data);
+                    setPreviewOpen(true);
+                  } catch (e) {
+                    message.error("预览失败: " + e.message);
+                  } finally {
+                    setPreviewLoading(false);
+                  }
+                }}
+                icon={<EyeOutlined />}>
+                预览
+              </Button>
+            </Space.Compact>
           </div>
         </>
       )}
@@ -801,6 +938,42 @@ export default function TextToVideo() {
 
   return (
     <div>
+      <Modal
+        title="📋 发送给 LLM 的数据预览"
+        open={previewOpen}
+        onCancel={() => setPreviewOpen(false)}
+        width={900}
+        footer={null}
+      >
+        {previewData && (
+          <div style={{ maxHeight: "70vh", overflow: "auto" }}>
+            <div style={{ marginBottom: 16 }}>
+              <Tag color="blue">System Prompt ({previewData.system_prompt?.length || 0} 字)</Tag>
+              <pre style={{
+                background: "#1e1e1e", color: "#d4d4d4", padding: 16, borderRadius: 8,
+                fontSize: 12, whiteSpace: "pre-wrap", maxHeight: 300, overflow: "auto"
+              }}>
+                {previewData.system_prompt}
+              </pre>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Tag color="green">User Message ({previewData.user_message?.length || 0} 字)</Tag>
+              <pre style={{
+                background: "#1e1e1e", color: "#d4d4d4", padding: 16, borderRadius: 8,
+                fontSize: 12, whiteSpace: "pre-wrap", maxHeight: 300, overflow: "auto"
+              }}>
+                {previewData.user_message}
+              </pre>
+            </div>
+            <div>
+              <Tag>参数</Tag>
+              <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 4 }}>
+                model: {previewData.model} | temperature: {previewData.temperature} | max_tokens: {previewData.max_tokens}
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
       <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
       <Drawer
         title={editingFile ? <span><FileTextOutlined style={{ marginRight: 8 }} />{editingFile.filename}</span> : "编辑文件"}

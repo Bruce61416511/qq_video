@@ -211,6 +211,8 @@ CONFIG_FILES = {
     "ai_analysis_prompt": "ai_analysis_prompt.txt",
     "topic_to_video_prompt": "topic_to_video_prompt.txt",
     "competitor_analysis_prompt": "competitor_analysis_prompt.txt",
+    "shot_topic_prompt": "shot_topic_prompt.txt",
+    "manual_topic_prompt": "manual_topic_prompt.txt",
 }
 
 @router.get("/config/files")

@@ -1,4 +1,4 @@
-﻿"""
+"""
 LLM 分镜策划服务
 参考 MoneyPrinterTurbo: app/services/llm.py
 支持 OpenAI / DeepSeek / 通义千问 / 智谱 等兼容接口
@@ -117,6 +117,181 @@ TOPIC_SHOT_PROMPT = _load_prompt(
 - 画风：暖色调、生活化、接地气
 - 配音：口语化、像朋友聊天"""
 )
+
+def build_topic_user_message(
+    video_topic: str,
+    angle: str,
+    hook: str,
+    hook_type: str,
+    content_outline: list,
+    target_emotion: str,
+    product_link: str,
+    total_duration: int,
+    hook_dur: int,
+    mid_dur: int,
+    end_dur: int,
+    outline_count: int,
+    shot_count: int,
+    outline_text: str,
+    competitor_framework: str = "",
+) -> str:
+    """Build the user message for shot plan generation from topic data."""
+    import json as _json
+
+    _hook_style = {
+        "故事冲突型": "镜1必须用特写→拉远揭示全貌，暖→冷色调转折，画面有叙事张力",
+        "反常识型": "镜1必须用微距/显微镜质感，暖自然光→冷蓝科技光，先信任后颠覆",
+        "数据冲击型": "镜1必须用数据可视化叠加+快速切换，深色背景+亮色高亮",
+        "痛点共鸣型": "镜1必须用主观视角POV+手持感，自然光低饱和，精准还原困扰场景",
+        "身份代入型": "镜1必须用中景群像→特写单人，暖色调亲和力，先定义人群再给方案",
+    }
+    _hook_directive = _hook_style.get(hook_type, "")
+
+    _emotion_style = {
+        "焦虑": "冷色调+硬光+快速节奏", "警醒": "冷色调+硬光+快速节奏",
+        "安心感": "暖色调+柔光+慢推镜头+留白", "被理解": "暖色调+柔光+慢推镜头+留白",
+        "恍然大悟": "冷→暖渐变，揭示镜头推近，弱起强收",
+        "好奇": "浅景深虚化→聚焦，悬念构图，金色光线", "期待": "浅景深虚化→聚焦，悬念构图，金色光线",
+        "温暖": "橙金柔光+慢动作+微距质感", "治愈": "橙金柔光+慢动作+微距质感",
+        "热血": "高饱和+快速运镜+粒子特效", "激励": "高饱和+快速运镜+粒子特效",
+    }
+    _emotion_directives = []
+    for emo_key, emo_val in _emotion_style.items():
+        if emo_key in target_emotion:
+            _emotion_directives.append(f"{emo_key}→{emo_val}")
+    _emotion_directive = "；".join(_emotion_directives) if _emotion_directives else ""
+
+    _angle_keywords = {
+        "解释": "画面以机理可视化为主（微距/动画/对比），配音是什么为什么怎么办",
+        "科普": "画面以机理可视化为主（微距/动画/对比），配音是什么为什么怎么办",
+        "共鸣": "画面以场景还原为主（生活化镜头/人物带入），配音我也是原来如此可以这样",
+        "故事": "画面以场景还原为主（生活化镜头/人物带入），配音我也是原来如此可以这样",
+        "争议": "画面用冲突感构图（分割画面/快速切换），配音你以为其实真相是",
+        "反问": "画面用冲突感构图（分割画面/快速切换），配音你以为其实真相是",
+        "清单": "画面用信息卡片风格（文字叠加/分步展示），配音以序号引导",
+        "攻略": "画面用信息卡片风格（文字叠加/分步展示），配音以序号引导",
+    }
+    _angle_directive = ""
+    for ak, av in _angle_keywords.items():
+        if ak in angle:
+            _angle_directive = av
+            break
+
+    user_content = f"""视频选题：{video_topic}
+黄金3秒：{hook}
+总时长：{total_duration}s
+
+内容要点：
+{outline_text}
+
+分镜规划：共{shot_count}镜，镜1({hook_dur}s)+中间{outline_count}镜(各{mid_dur}s)+结尾({end_dur}s)
+
+【必须执行的创作指令】
+- 钩子类型={hook_type}：{_hook_directive}
+- 目标情绪={target_emotion}：{_emotion_directive}
+- 切入角度：{_angle_directive}
+- 产品={product_link if product_link else "无"}：{("在倒数第2镜自然植入，展示使用场景而非罗列卖点" if product_link else "不提任何品牌，聚焦知识/情绪价值")}
+"""
+
+    if competitor_framework:
+        try:
+            fw = _json.loads(competitor_framework) if isinstance(competitor_framework, str) else competitor_framework
+            # --- Header: style + tone + narrative_arc ---
+            parts = []
+            style_desc = fw.get("style", "")
+            tone = fw.get("tone", "")
+            arc = fw.get("narrative_arc", "")
+            header = style_desc
+            if tone:
+                header += f" / {tone}"
+            if arc:
+                header += f" / {arc}"
+            if header:
+                parts.append(f"风格基调：{header}")
+            # Target audience
+            ta = fw.get("target_audience", {})
+            if isinstance(ta, dict):
+                ta_parts = []
+                if ta.get("age_range"):
+                    ta_parts.append(ta["age_range"])
+                if ta.get("gender") and ta["gender"] != "不限":
+                    ta_parts.append(ta["gender"])
+                pain_points = ta.get("pain_points", [])
+                if pain_points:
+                    ta_parts.append("痛点：" + "；".join(pain_points[:3]))
+                if ta_parts:
+                    parts.append(f"目标受众：{' / '.join(ta_parts)}")
+            total_dur = fw.get("total_duration", "")
+            if total_dur:
+                parts.append(f"总时长：{total_dur}s")
+
+            # --- Hook visual ---
+            hook = fw.get("hook", {})
+            if isinstance(hook, dict):
+                hook_visual = hook.get("hook_visual", "")
+                if hook_visual:
+                    parts.append(f"钩子画面：{hook_visual}")
+
+            # --- Shots ---
+            shots_ref = fw.get("shots", [])
+            if shots_ref:
+                shot_lines = []
+                for s in shots_ref:
+                    idx = s.get("index", "?")
+                    dur = s.get("duration", "?")
+                    stype = s.get("shot_type", "")
+                    ssize = s.get("shot_size", "")
+                    vdesc = s.get("visual_desc", "")
+                    script = s.get("script", "")
+                    ebeat = s.get("emotion_beat", "")
+                    # Build shot line: size + type + visual + emotion_beat + script
+                    meta = f"{ssize}" if ssize else ""
+                    if stype:
+                        meta = f"{meta} {stype}" if meta else stype
+                    meta_str = f"（{dur}s {meta}）" if meta else f"（{dur}s）"
+                    desc_parts = []
+                    if vdesc:
+                        desc_parts.append(vdesc)
+                    if ebeat:
+                        desc_parts.append(f"[{ebeat}]")
+                    desc_str = " | ".join(desc_parts)
+                    line = f"  - 镜{idx}{meta_str}：{desc_str}"
+                    if script:
+                        line += f" | 配音：{script}"
+                    shot_lines.append(line)
+                parts.append("分镜拆解：\n" + "\n".join(shot_lines))
+
+            # --- CTA ---
+            ts = fw.get("traffic_strategy", {})
+            if isinstance(ts, dict):
+                cta_type = ts.get("cta_type", "")
+                cta_pos = ts.get("cta_placement", "")
+                if cta_type and cta_type != "无":
+                    cta_str = f"CTA：{cta_type}"
+                    if cta_pos:
+                        cta_str += f"（第{cta_pos}镜）"
+                    parts.append(cta_str)
+
+            # --- Replicability ---
+            rep = fw.get("replicability", {})
+            if isinstance(rep, dict):
+                copyable = rep.get("copyable_elements", [])
+                if copyable:
+                    ce_text = "；".join(copyable[:5])  # limit to 5
+                    parts.append(f"可复用要素：{ce_text}")
+                improvements = rep.get("improvement_opportunities", [])
+                if improvements:
+                    imp_text = "；".join(improvements[:3])
+                    parts.append(f"改进空间：{imp_text}")
+
+            if parts:
+                framework_text = "\n".join(parts)
+                user_content += f"""\n\n【竞品参考框架】\n{framework_text}\n\n请参考以上竞品框架的风格基调、分镜节奏、景别递进、情绪曲线、可复用要素及改进空间，生成新选题的分镜方案。"""
+        except:
+            pass
+
+    return user_content
+
 async def generate_shot_plan_from_topic(
     video_topic: str,
     angle: str,
@@ -143,31 +318,147 @@ async def generate_shot_plan_from_topic(
     end_dur = base_dur
     mid_dur = (total_duration - hook_dur - end_dur) // outline_count if outline_count > 0 else base_dur
 
-    prompt = TOPIC_SHOT_PROMPT.format(hook_dur=hook_dur, end_dur=end_dur)
+    prompt = TOPIC_SHOT_PROMPT.replace("{hook_dur}", str(hook_dur)).replace("{end_dur}", str(end_dur))
 
     outline_text = "\n".join(f"{i+1}. {o}" for i, o in enumerate(content_outline)) if content_outline else "无"
 
+    # Build inline style directives so LLM cannot skip them
+    _hook_style = {
+        "故事冲突型": "镜1必须用特写→拉远揭示全貌，暖→冷色调转折，画面有叙事张力",
+        "反常识型": "镜1必须用微距/显微镜质感，暖自然光→冷蓝科技光，先信任后颠覆",
+        "数据冲击型": "镜1必须用数据可视化叠加+快速切换，深色背景+亮色高亮",
+        "痛点共鸣型": "镜1必须用主观视角POV+手持感，自然光低饱和，精准还原困扰场景",
+        "身份代入型": "镜1必须用中景群像→特写单人，暖色调亲和力，先定义人群再给方案",
+    }
+    _hook_directive = _hook_style.get(hook_type, "")
+
+    _emotion_style = {
+        "焦虑": "冷色调+硬光+快速节奏", "警醒": "冷色调+硬光+快速节奏",
+        "安心感": "暖色调+柔光+慢推镜头+留白", "被理解": "暖色调+柔光+慢推镜头+留白",
+        "恍然大悟": "冷→暖渐变，揭示镜头推近，弱起强收",
+        "好奇": "浅景深虚化→聚焦，悬念构图，金色光线", "期待": "浅景深虚化→聚焦，悬念构图，金色光线",
+        "温暖": "橙金柔光+慢动作+微距质感", "治愈": "橙金柔光+慢动作+微距质感",
+        "热血": "高饱和+快速运镜+粒子特效", "激励": "高饱和+快速运镜+粒子特效",
+    }
+    _emotion_directives = []
+    for emo_key, emo_val in _emotion_style.items():
+        if emo_key in target_emotion:
+            _emotion_directives.append(f"{emo_key}→{emo_val}")
+    _emotion_directive = "；".join(_emotion_directives) if _emotion_directives else ""
+
+    _angle_keywords = {
+        "解释": "画面以机理可视化为主（微距/动画/对比），配音是什么为什么怎么办",
+        "科普": "画面以机理可视化为主（微距/动画/对比），配音是什么为什么怎么办",
+        "共鸣": "画面以场景还原为主（生活化镜头/人物带入），配音我也是原来如此可以这样",
+        "故事": "画面以场景还原为主（生活化镜头/人物带入），配音我也是原来如此可以这样",
+        "争议": "画面用冲突感构图（分割画面/快速切换），配音你以为其实真相是",
+        "反问": "画面用冲突感构图（分割画面/快速切换），配音你以为其实真相是",
+        "清单": "画面用信息卡片风格（文字叠加/分步展示），配音以序号引导",
+        "攻略": "画面用信息卡片风格（文字叠加/分步展示），配音以序号引导",
+    }
+    _angle_directive = ""
+    for ak, av in _angle_keywords.items():
+        if ak in angle:
+            _angle_directive = av
+            break
+
     user_content = f"""视频选题：{video_topic}
-切入角度：{angle}
 黄金3秒：{hook}
-钩子类型：{hook_type}
-目标情绪：{target_emotion}
-产品关联：{product_link}
 总时长：{total_duration}s
 
 内容要点：
 {outline_text}
 
 分镜规划：共{shot_count}镜，镜1({hook_dur}s)+中间{outline_count}镜(各{mid_dur}s)+结尾({end_dur}s)
+
+【必须执行的创作指令】
+- 钩子类型={hook_type}：{_hook_directive}
+- 目标情绪={target_emotion}：{_emotion_directive}
+- 切入角度：{_angle_directive}
+- 产品={product_link if product_link else "无"}：{("在倒数第2镜自然植入，展示使用场景而非罗列卖点" if product_link else "不提任何品牌，聚焦知识/情绪价值")}
 """
 
     if competitor_framework:
         try:
             fw = json.loads(competitor_framework) if isinstance(competitor_framework, str) else competitor_framework
+            # --- Header: style + tone + narrative_arc ---
+            parts = []
+            style_desc = fw.get("style", "")
+            tone = fw.get("tone", "")
+            arc = fw.get("narrative_arc", "")
+            header = style_desc
+            if tone:
+                header += f" / {tone}"
+            if arc:
+                header += f" / {arc}"
+            if header:
+                parts.append(f"风格基调：{header}")
+            total_dur = fw.get("total_duration", "")
+            if total_dur:
+                parts.append(f"总时长：{total_dur}s")
+
+            # --- Hook visual ---
+            hook = fw.get("hook", {})
+            if isinstance(hook, dict):
+                hook_visual = hook.get("hook_visual", "")
+                if hook_visual:
+                    parts.append(f"钩子画面：{hook_visual}")
+
+            # --- Shots ---
             shots_ref = fw.get("shots", [])
             if shots_ref:
-                ref_text = "\n".join(f"  - 镜{s.get("index", "?")}（{s.get("duration", "?")}s {s.get("type", "")}）：{s.get("desc", "")} | {s.get("script", "")}" for s in shots_ref)
-                user_content += f"""\n\n竞品参考框架（{fw.get("style", "")}）：\n{ref_text}\n\n请参考以上竞品框架的分镜节奏和风格，生成新选题的分镜方案。"""
+                shot_lines = []
+                for s in shots_ref:
+                    idx = s.get("index", "?")
+                    dur = s.get("duration", "?")
+                    stype = s.get("shot_type", "")
+                    ssize = s.get("shot_size", "")
+                    vdesc = s.get("visual_desc", "")
+                    script = s.get("script", "")
+                    ebeat = s.get("emotion_beat", "")
+                    # Build shot line: size + type + visual + emotion_beat + script
+                    meta = f"{ssize}" if ssize else ""
+                    if stype:
+                        meta = f"{meta} {stype}" if meta else stype
+                    meta_str = f"（{dur}s {meta}）" if meta else f"（{dur}s）"
+                    desc_parts = []
+                    if vdesc:
+                        desc_parts.append(vdesc)
+                    if ebeat:
+                        desc_parts.append(f"[{ebeat}]")
+                    desc_str = " | ".join(desc_parts)
+                    line = f"  - 镜{idx}{meta_str}：{desc_str}"
+                    if script:
+                        line += f" | 配音：{script}"
+                    shot_lines.append(line)
+                parts.append("分镜拆解：\n" + "\n".join(shot_lines))
+
+            # --- CTA ---
+            ts = fw.get("traffic_strategy", {})
+            if isinstance(ts, dict):
+                cta_type = ts.get("cta_type", "")
+                cta_pos = ts.get("cta_placement", "")
+                if cta_type and cta_type != "无":
+                    cta_str = f"CTA：{cta_type}"
+                    if cta_pos:
+                        cta_str += f"（第{cta_pos}镜）"
+                    parts.append(cta_str)
+
+            # --- Replicability ---
+            rep = fw.get("replicability", {})
+            if isinstance(rep, dict):
+                copyable = rep.get("copyable_elements", [])
+                if copyable:
+                    ce_text = "；".join(copyable[:5])  # limit to 5
+                    parts.append(f"可复用要素：{ce_text}")
+                improvements = rep.get("improvement_opportunities", [])
+                if improvements:
+                    imp_text = "；".join(improvements[:3])
+                    parts.append(f"改进空间：{imp_text}")
+
+            if parts:
+                framework_text = "\n".join(parts)
+                user_content += f"""\n\n【竞品参考框架】\n{framework_text}\n\n请参考以上竞品框架的风格基调、分镜节奏、景别递进、情绪曲线、可复用要素及改进空间，生成新选题的分镜方案。"""
         except:
             pass
 
@@ -188,7 +479,7 @@ async def generate_shot_plan_from_topic(
                 {"role": "user", "content": user_content},
             ],
             temperature=0.7,
-            max_tokens=2000,
+            max_tokens=4000,
         )
         content = response.choices[0].message.content
         json_match = re.search(r'\[[\s\S]*\]', content)
@@ -377,7 +668,7 @@ async def analyze_competitor(source_text: str) -> dict:
                 {"role": "user", "content": "请拆解以下竞品视频，输出结构化分镜框架 JSON：\n\n" + source_text},
             ],
             temperature=0.5,
-            max_tokens=2000,
+            max_tokens=4000,
         )
         result = response.choices[0].message.content
         json_match = re.search(r'\{[\s\S]*\}', result)
