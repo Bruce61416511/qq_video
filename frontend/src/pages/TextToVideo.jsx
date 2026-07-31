@@ -1,12 +1,13 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Steps, Input, Button, Card, App, Select,
-  Space, Tag, Tooltip, Alert, Popconfirm, Divider, Progress, Timeline
+  Steps, Input, Button, Card, App, Select, Tabs, Drawer, List,
+  Space, Tag, Tooltip, Alert, Popconfirm, Divider, Progress, Timeline, Typography
 } from 'antd'
 import {
   ThunderboltOutlined, LoadingOutlined, CheckCircleOutlined,
-  EditOutlined, ReloadOutlined, ArrowRightOutlined,
+  EditOutlined, FileTextOutlined, FileProtectOutlined, SettingOutlined,
+  ReloadOutlined, ArrowRightOutlined,
   ArrowLeftOutlined, VideoCameraOutlined
 } from '@ant-design/icons'
 import { mediaApi, trendsApi } from '../services/api'
@@ -40,6 +41,15 @@ export default function TextToVideo() {
   const [videoTopics, setVideoTopics] = useState([])
   const [selectedTopicId, setSelectedTopicId] = useState(null)
   const [selectedTopic, setSelectedTopic] = useState(null)
+  const [activeTab, setActiveTab] = useState("video")
+  const [configDrawerOpen, setConfigDrawerOpen] = useState(false)
+  const [editingFile, setEditingFile] = useState(null)
+  const [editingContent, setEditingContent] = useState("")
+  const [savingConfig, setSavingConfig] = useState(false)
+  const [configFiles] = useState([
+    { key: "shot_topic_prompt", filename: "shot_topic_prompt.txt", description: "选题拆镜提示词", exists: true },
+    { key: "manual_topic_prompt", filename: "manual_topic_prompt.txt", description: "手动拆镜提示词", exists: true },
+  ])
 
   // Load video topics on mount
   useEffect(() => {
@@ -86,6 +96,19 @@ export default function TextToVideo() {
   const [resultMedia, setResultMedia] = useState(null)
 
   // Generate shot plan
+  const openConfigEditor = async (file) => {
+    setEditingFile(file)
+    setConfigDrawerOpen(true)
+    try { const res = await trendsApi.getConfigFile(file.key); setEditingContent(res.content || "") } catch (e) { setEditingContent("") }
+  }
+
+  const handleSaveConfig = async () => {
+    if (!editingFile) return
+    setSavingConfig(true)
+    try { await trendsApi.saveConfigFile(editingFile.key, editingContent); message.success(editingFile.filename + " 已保存"); setConfigDrawerOpen(false) } catch (e) { message.error(e.message) }
+    finally { setSavingConfig(false) }
+  }
+
   const handleGenerateShots = useCallback(async () => {
     if (selectedTopic) {
       setShotsLoading(true)
@@ -473,8 +496,13 @@ export default function TextToVideo() {
     </Card>
   )
 
-  return (
-    <div style={{ maxWidth: 780 }}>
+  const { Text } = Typography
+
+  const tabItems = [
+    {
+      key: "video", label: "文生视频", icon: <VideoCameraOutlined />,
+      children: (
+        <div style={{ maxWidth: 780 }}>
       <div style={{ marginBottom: 24 }}>
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#142528', letterSpacing: '-0.3px' }}>文生视频</h2>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: '#8c8c8c' }}>
@@ -507,6 +535,56 @@ export default function TextToVideo() {
           </ul>
         </Card>
       )}
+        </div>
+      ),
+    },
+    {
+      key: "config", label: "生成配置", icon: <SettingOutlined />,
+      children: (
+        <div style={{ maxWidth: 700 }}>
+          <Card size="small" title={<span><FileProtectOutlined style={{ marginRight: 6 }} />提示词文件</span>}>
+            <List
+              dataSource={configFiles}
+              renderItem={file => (
+                <List.Item extra={<Button size="small" icon={<EditOutlined />} onClick={() => openConfigEditor(file)}>编辑</Button>}>
+                  <List.Item.Meta
+                    avatar={<span style={{ fontSize: 20 }}>{file.key === "shot_topic_prompt" ? "🎬" : "✏️"}</span>}
+                    title={<span style={{ fontFamily: "monospace", fontSize: 13 }}>{file.filename}</span>}
+                    description={<span style={{ fontSize: 12 }}>{file.description}</span>}
+                  />
+                </List.Item>
+              )}
+            />
+          </Card>
+          <Card size="small" style={{ marginTop: 16 }}>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>💡 提示</span>
+            <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12, color: "#6c777b", lineHeight: 2 }}>
+              <li>shot_topic_prompt.txt — 控制从热搜选题自动生成分镜</li>
+              <li>manual_topic_prompt.txt — 控制手动输入主题时生成分镜</li>
+            </ul>
+          </Card>
+        </div>
+      ),
+    },
+  ]
+
+  return (
+    <div>
+      <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
+      <Drawer
+        title={editingFile ? <span><FileTextOutlined style={{ marginRight: 8 }} />{editingFile.filename}</span> : "编辑文件"}
+        open={configDrawerOpen}
+        onClose={() => setConfigDrawerOpen(false)}
+        width={700}
+        extra={<Button type="primary" onClick={handleSaveConfig} loading={savingConfig}>保存</Button>}
+      >
+        <Input.TextArea
+          value={editingContent}
+          onChange={e => setEditingContent(e.target.value)}
+          style={{ fontFamily: "monospace", fontSize: 13, height: "calc(100vh - 180px)" }}
+          placeholder="输入文件内容..."
+        />
+      </Drawer>
     </div>
   )
 }
