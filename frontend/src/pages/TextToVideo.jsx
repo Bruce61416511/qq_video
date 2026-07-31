@@ -196,7 +196,7 @@ export default function TextToVideo() {
 
       {selectedTopic ? (
         <div>
-          <Card size="small" style={{ background: '#f6ffed', border: '1px solid #b7eb8f', marginBottom: 16 }}>
+          <Card size="small" style={{ background: '#eefcf8', border: '1px solid #a9ebe0', marginBottom: 16 }}>
             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>✅ 选题确认</div>
             <p style={{ margin: '4px 0', fontSize: 13 }}><strong>标题：</strong>{selectedTopic.video_topic}</p>
             {selectedTopic.angle && <p style={{ margin: '4px 0', fontSize: 13 }}><strong>角度：</strong>{selectedTopic.angle}</p>}
@@ -286,7 +286,7 @@ export default function TextToVideo() {
   const renderStep2 = () => (
     <>
       {/* 选题摘要 */}
-      <Card size="small" style={{ marginBottom: 16, background: '#f6ffed', border: '1px solid #b7eb8f' }}>
+      <Card size="small" style={{ marginBottom: 16, background: '#eefcf8', border: '1px solid #a9ebe0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontWeight: 700, fontSize: 14 }}>📋 原始选题</span>
           <Button size="small" type="link" onClick={() => setCurrent(0)} icon={<ArrowLeftOutlined />}>返回修改</Button>
@@ -325,7 +325,7 @@ export default function TextToVideo() {
       {shots.map((shot, idx) => (
         <div key={idx} style={{
           marginBottom: 16, padding: 16, borderRadius: 8,
-          border: '1px solid #f0f0f0', background: '#fafafa',
+          border: '1px solid #eefcf8', background: '#eefcf8',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <Tag color="blue">分镜 {idx + 1}</Tag>
@@ -401,7 +401,7 @@ export default function TextToVideo() {
     <Card>
       {generating ? (
         <div style={{ textAlign: 'center', padding: 40 }}>
-          <LoadingOutlined style={{ fontSize: 48, color: '#1677ff' }} />
+          <LoadingOutlined style={{ fontSize: 48, color: '#005d50' }} />
           <p style={{ marginTop: 16, fontSize: 15, color: '#8c8c8c' }}>正在提交任务...</p>
         </div>
       ) : (
@@ -410,7 +410,7 @@ export default function TextToVideo() {
             {mediaReady ? (
               <CheckCircleOutlined style={{ fontSize: 48, color: '#52c41a' }} />
             ) : (
-              <LoadingOutlined style={{ fontSize: 48, color: '#1677ff' }} />
+              <LoadingOutlined style={{ fontSize: 48, color: '#005d50' }} />
             )}
             <h3 style={{ marginTop: 8 }}>
               {mediaReady ? '视频生成完成！' : '视频生成中...'}
@@ -476,7 +476,7 @@ export default function TextToVideo() {
   return (
     <div style={{ maxWidth: 780 }}>
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>文生视频</h2>
+        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#142528', letterSpacing: '-0.3px' }}>文生视频</h2>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: '#8c8c8c' }}>
           AI 智能分镜 — 输入主题自动拆分分镜，逐镜编辑后生成完整视频
         </p>

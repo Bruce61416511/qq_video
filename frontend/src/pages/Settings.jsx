@@ -247,14 +247,14 @@ export default function Settings() {
   return (
     <div style={{ maxWidth: 780 }}>
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>设置</h2>
+        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#142528', letterSpacing: '-0.3px' }}>设置</h2>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: '#8c8c8c' }}>
           配置 AI 视频生成的三个环节 —— LLM 分镜策划 → TTS 语音合成 → 视频生成
         </p>
       </div>
 
       <ServiceCard
-        icon={<RobotOutlined style={{ fontSize: 22, color: '#1677ff' }} />}
+        icon={<RobotOutlined style={{ fontSize: 22, color: '#005d50' }} />}
         title="LLM 分镜策划"
         desc="将主题拆分为画面提示词 + 语音文案"
         serviceKey="llm_service"

@@ -57,8 +57,8 @@ export default function PublishModal({ video, onClose }) {
         </Form.Item>
 
         {selectedMedia && (
-          <div style={{ display: 'flex', gap: 12, padding: 12, background: '#fafafa', borderRadius: 8, marginBottom: 20 }}>
-            <div style={{ width: 80, height: 50, background: '#e8e8e8', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#bfbfbf' }}>预览</div>
+          <div style={{ display: 'flex', gap: 12, padding: 12, background: '#eefcf8', borderRadius: 8, marginBottom: 20 }}>
+            <div style={{ width: 80, height: 50, background: '#d4f5ee', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#a9ebe0' }}>预览</div>
             <div>
               <div style={{ fontWeight: 500 }}>{selectedMedia.name}</div>
               <div style={{ fontSize: 12, color: '#8c8c8c' }}>{selectedMedia.size} · {selectedMedia.duration}</div>

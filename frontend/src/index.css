@@ -155,3 +155,74 @@ a {
   color: #005d50 !important;
   border-color: #005d50 !important;
 }
+
+/* Spin loader - brand green */
+.ant-spin-dot-item {
+  background-color: #005d50 !important;
+}
+
+/* Steps - brand green */
+.ant-steps-item-process .ant-steps-item-icon {
+  background-color: #005d50 !important;
+  border-color: #005d50 !important;
+}
+
+.ant-steps-item-finish .ant-steps-item-icon {
+  border-color: #17857e !important;
+}
+
+.ant-steps-item-finish .ant-steps-item-icon > .ant-steps-icon {
+  color: #17857e !important;
+}
+
+.ant-steps-item-finish > .ant-steps-item-container > .ant-steps-item-content > .ant-steps-item-title::after {
+  background-color: #dce9e7 !important;
+}
+
+/* Tag.CheckableTag selected */
+.ant-tag-checkable-checked {
+  background-color: #eefcf8 !important;
+  color: #005d50 !important;
+  border-color: #005d50 !important;
+}
+
+/* Switch checked */
+.ant-switch-checked {
+  background-color: #005d50 !important;
+}
+
+/* Pagination active */
+.ant-pagination-item-active {
+  border-color: #005d50 !important;
+}
+
+.ant-pagination-item-active a {
+  color: #005d50 !important;
+}
+
+/* Link color */
+a {
+  color: #005d50;
+}
+
+a:hover {
+  color: #00473f;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #dce9e7;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a9ebe0;
+}

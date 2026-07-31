@@ -122,7 +122,7 @@ export default function Accounts() {
       title: '账号', dataIndex: 'name', key: 'name', width: 250,
       render: (text, record) => (
         <Space>
-          <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4f46e5', fontWeight: 700, fontSize: 14 }}>
+          <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#eefcf8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#005d50', fontWeight: 700, fontSize: 14 }}>
             <UserOutlined />
           </div>
           <div>
@@ -158,7 +158,7 @@ export default function Accounts() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>账号管理</h2><span style={{ fontSize: 13, color: '#8c8c8c' }}>{accounts.length}/{MAX} 个账号</span></div>
+        <div><h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#142528', letterSpacing: '-0.3px' }}>账号管理</h2><span style={{ fontSize: 13, color: '#8c8c8c' }}>{accounts.length}/{MAX} 个账号</span></div>
         <Button type="primary" icon={<PlusOutlined />} disabled={accounts.length >= MAX} onClick={() => setAddOpen(true)} size="large">添加账号</Button>
       </div>
             <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
@@ -181,7 +181,7 @@ export default function Accounts() {
       </Modal>
       <Modal title="扫码登录" open={qrOpen} onCancel={() => { setQrOpen(false); setQrId(null) }} footer={null} width={420} centered>
         <div style={{ textAlign: 'center', padding: '24px 16px' }}>
-          <LoadingOutlined style={{ fontSize: 40, color: '#4f46e5', marginBottom: 16 }} spin />
+          <LoadingOutlined style={{ fontSize: 40, color: '#005d50', marginBottom: 16 }} spin />
           <p style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>请在弹出的浏览器窗口中扫码</p>
           <p style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 16 }}>
             已打开 Chromium 浏览器并显示二维码。<br />

@@ -119,7 +119,7 @@ export default function PublishTasks() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>发布记录</h2>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#142528', letterSpacing: '-0.3px' }}>发布记录</h2>
           <Space style={{ marginTop: 4 }}>
             <span style={{ fontSize: 13, color: '#8c8c8c' }}>
               共 {tasks.length} 条 · 成功 {successCount} · 失败 {failCount}
@@ -144,7 +144,7 @@ export default function PublishTasks() {
           { label: "总记录", value: tasks.length, color: "#005d50", bg: "linear-gradient(135deg, #eefcf8, #d4f5ee)" },
           { label: "成功", value: successCount, color: "#17857e", bg: "linear-gradient(135deg, #f0faf7, #c8f0e6)" },
           { label: "失败", value: failCount, color: "#c53030", bg: "linear-gradient(135deg, #fef0f0, #fdd)" },
-          { label: "进行中", value: activeCount, color: "#1677ff", bg: "linear-gradient(135deg, #e8f0ff, #d4e0ff)" },
+          { label: "进行中", value: activeCount, color: "#005d50", bg: "linear-gradient(135deg, #e8f0ff, #d4e0ff)" },
         ].map((card, i) => (
           <div key={i} style={{ flex: 1, padding: "14px 18px", borderRadius: 12, background: card.bg, border: "1px solid " + card.color + "20" }}>
             <div style={{ fontSize: 12, color: card.color, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>{card.label}</div>

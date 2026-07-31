@@ -104,7 +104,7 @@ export default function MediaLibrary() {
       title: '素材名称', dataIndex: 'name', key: 'name', width: 260,
       render: (t, r) => (
         <Space>
-          <div style={{ width: 72, height: 44, background: '#f0f0f0', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#bfbfbf' }}>
+          <div style={{ width: 72, height: 44, background: '#eefcf8', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#bfbfbf' }}>
             {r.status === 'generating' ? '生成中' : '缩略图'}
           </div>
           <span style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160, display: 'inline-block' }}>{t}</span>
@@ -141,7 +141,7 @@ export default function MediaLibrary() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>素材库</h2>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#142528', letterSpacing: '-0.3px' }}>素材库</h2>
           <span style={{ fontSize: 13, color: '#8c8c8c' }}>共 {media.length} 个素材 · {readyCount} 个就绪</span>
         </div>
         <Space>
@@ -155,7 +155,7 @@ export default function MediaLibrary() {
         {[ 
           { label: "总素材", value: media.length, color: "#005d50", bg: "linear-gradient(135deg, #eefcf8, #d4f5ee)" },
           { label: "就绪", value: readyCount, color: "#17857e", bg: "linear-gradient(135deg, #f0faf7, #c8f0e6)" },
-          { label: "生成中", value: genCount, color: "#1677ff", bg: "linear-gradient(135deg, #e8f0ff, #d4e0ff)" },
+          { label: "生成中", value: genCount, color: "#005d50", bg: "linear-gradient(135deg, #e8f0ff, #d4e0ff)" },
         ].map((card, i) => (
           <div key={i} style={{ flex: 1, padding: "14px 18px", borderRadius: 12, background: card.bg, border: "1px solid " + card.color + "20" }}>
             <div style={{ fontSize: 12, color: card.color, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>{card.label}</div>
