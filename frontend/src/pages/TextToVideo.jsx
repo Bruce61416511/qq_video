@@ -8,7 +8,7 @@ import {
   ThunderboltOutlined, LoadingOutlined, CheckCircleOutlined,
   EditOutlined, FileTextOutlined, FileProtectOutlined, SettingOutlined,
   ReloadOutlined, ArrowRightOutlined,
-  ArrowLeftOutlined, VideoCameraOutlined, EyeOutlined
+  ArrowLeftOutlined, VideoCameraOutlined, EyeOutlined, PlusOutlined, MinusOutlined
 } from '@ant-design/icons'
 import { mediaApi, trendsApi } from '../services/api'
 
@@ -56,6 +56,7 @@ export default function TextToVideo() {
     { key: "shot_topic_prompt", filename: "shot_topic_prompt.txt", description: "选题拆镜提示词", exists: true },
     { key: "manual_topic_prompt", filename: "manual_topic_prompt.txt", description: "手动拆镜提示词", exists: true },
   ])
+  const [collapsed, setCollapsed] = useState({})
 
   // Load video topics on mount
   useEffect(() => {
@@ -263,6 +264,14 @@ export default function TextToVideo() {
     setCurrent(0)
     setShots([])
     setResultMedia(null)
+    setSelectedTopic(null)
+    setSelectedTopicId(null)
+    setSelectedTemplateId(null)
+    setTopic('')
+    setShotStatuses([])
+    setGenerating(false)
+    setPolling(false)
+    localStorage.removeItem("text_to_video_state")
   }
 
   // ---------- Step 1: Input ----------
@@ -289,8 +298,14 @@ export default function TextToVideo() {
 
       {selectedTopic ? (
         <div>
+          <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', marginBottom: 8 }}
+            onClick={() => setCollapsed(c => ({...c, topic: !c.topic}))}>
+            {collapsed.topic ? <PlusOutlined style={{ marginRight: 6, fontSize: 12 }} /> : <MinusOutlined style={{ marginRight: 6, fontSize: 12 }} />}
+            <span style={{ fontWeight: 600, fontSize: 14 }}>热搜选题</span>
+          </div>
+          {!collapsed.topic && (
+          <>
           <Card size="small" style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>选题确认</div>
             <div style={{ fontSize: 12, lineHeight: 1.8 }}>
               <div style={{ display: 'flex', marginBottom: 2 }}>
                 <span style={{ color: '#888', width: 56, flexShrink: 0 }}>标题</span>
@@ -351,7 +366,8 @@ export default function TextToVideo() {
               <Select value={resolution} onChange={setResolution} options={RESOLUTION_OPTIONS} style={{ width: 100 }} />
             </div>
           </Space>
-
+          </>
+          )}
           {/* 竞品模板参考（手动+选题均可使用） */}
           {competitorTemplates.length > 0 && (
             <div style={{ marginBottom: 16 }}>
@@ -375,8 +391,14 @@ export default function TextToVideo() {
                 let fw = {}
                 try { fw = JSON.parse(tpl.framework) } catch {}
                 return (
+<>
+          <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', marginBottom: 8, marginTop: 12 }}
+            onClick={() => setCollapsed(c => ({...c, template: !c.template}))}>
+            {collapsed.template ? <PlusOutlined style={{ marginRight: 6, fontSize: 12 }} /> : <MinusOutlined style={{ marginRight: 6, fontSize: 12 }} />}
+            <span style={{ fontWeight: 600, fontSize: 14 }}>爆款视频模板</span>
+          </div>
+          {!collapsed.template && (
                   <Card size="small" style={{ marginTop: 8, background: '#fafafa' }}>
-                    <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>模板预览（将发送给 LLM）</div>
                     <div style={{ fontSize: 12, lineHeight: 1.8 }}>
                       <div style={{ display: 'flex', marginBottom: 2 }}>
                         <span style={{ color: '#888', width: 56, flexShrink: 0 }}>风格</span>
@@ -449,6 +471,8 @@ export default function TextToVideo() {
                       )}
                     </div>
                   </Card>
+          )}
+          </>
                 )
               })()}
             </div>
@@ -551,8 +575,14 @@ export default function TextToVideo() {
                 let fw = {}
                 try { fw = JSON.parse(tpl.framework) } catch {}
                 return (
+<>
+          <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', marginBottom: 8, marginTop: 12 }}
+            onClick={() => setCollapsed(c => ({...c, template: !c.template}))}>
+            {collapsed.template ? <PlusOutlined style={{ marginRight: 6, fontSize: 12 }} /> : <MinusOutlined style={{ marginRight: 6, fontSize: 12 }} />}
+            <span style={{ fontWeight: 600, fontSize: 14 }}>爆款视频模板</span>
+          </div>
+          {!collapsed.template && (
                   <Card size="small" style={{ marginTop: 8, background: '#fafafa' }}>
-                    <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>模板预览（将发送给 LLM）</div>
                     <div style={{ fontSize: 12, lineHeight: 1.8 }}>
                       <div style={{ display: 'flex', marginBottom: 2 }}>
                         <span style={{ color: '#888', width: 56, flexShrink: 0 }}>风格</span>
@@ -625,6 +655,8 @@ export default function TextToVideo() {
                       )}
                     </div>
                   </Card>
+          )}
+          </>
                 )
               })()}
             </div>
@@ -673,49 +705,172 @@ export default function TextToVideo() {
   // ---------- Step 2: Edit shots ----------
   const renderStep2 = () => (
     <>
-      {/* 选题摘要 */}
-      <Card size="small" style={{ marginBottom: 16, background: '#eefcf8', border: '1px solid #a9ebe0' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontWeight: 700, fontSize: 14 }}>📋 原始选题</span>
-          <Button size="small" type="link" onClick={() => setCurrent(0)} icon={<ArrowLeftOutlined />}>返回修改</Button>
-        </div>
-        {selectedTopic ? (
-          <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.8 }}>
-            <div><strong>标题：</strong>{selectedTopic.video_topic}</div>
-            {selectedTopic.hook_type && <div><strong>🎯 钩子类型：</strong><Tag color="orange">{selectedTopic.hook_type}</Tag></div>}
-            {selectedTopic.angle && <div><strong>角度：</strong>{selectedTopic.angle}</div>}
-            {selectedTopic.hook && <div style={{ color: '#e67e22' }}><strong>⚡ 黄金3秒：</strong>{selectedTopic.hook}</div>}
-            {selectedTopic.content_outline?.length > 0 && (
-              <div style={{ marginTop: 6 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>📝 内容要点：</div>
-                {selectedTopic.content_outline.map((p, i) => (
-                  <div key={i} style={{
-                    display: 'flex', alignItems: 'flex-start',
-                    padding: '5px 8px', marginBottom: 4,
-                    background: '#f0faf6', borderRadius: 6,
-                    
-                    gap: 6
-                  }}>
-                    <span style={{
-                      width: 5, height: 5, borderRadius: 3,
-                      background: '#333', flexShrink: 0, marginTop: 7
-                    }} />
-                    <span style={{ fontSize: 12, lineHeight: '18px', color: '#444' }}>{p}</span>
-                  </div>
-                ))}
+            {/* 热搜选题 + 爆款视频模板 */}
+      {selectedTopic && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', marginBottom: 8 }}
+            onClick={() => setCollapsed(c => ({...c, topic: !c.topic}))}>
+            {collapsed.topic ? <PlusOutlined style={{ marginRight: 6, fontSize: 12 }} /> : <MinusOutlined style={{ marginRight: 6, fontSize: 12 }} />}
+            <span style={{ fontWeight: 600, fontSize: 14 }}>热搜选题</span>
+          </div>
+          {!collapsed.topic && (
+<>
+<Card size="small" style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, lineHeight: 1.8 }}>
+              <div style={{ display: 'flex', marginBottom: 2 }}>
+                <span style={{ color: '#888', width: 56, flexShrink: 0 }}>标题</span>
+                <span style={{ fontWeight: 500 }}>{selectedTopic.video_topic}</span>
               </div>
-            )}
-            {selectedTopic.target_emotion && <div><strong>🎭 目标情绪：</strong>{selectedTopic.target_emotion}</div>}
-            {selectedTopic.product_link && <div><strong>🔗 产品关联：</strong>{selectedTopic.product_link}</div>}
-            <div><strong>⏱ 总时长：</strong>{selectedTopic.duration || 30}s</div>
+              {selectedTopic.angle && (
+                <div style={{ display: 'flex', marginBottom: 2 }}>
+                  <span style={{ color: '#888', width: 56, flexShrink: 0 }}>角度</span>
+                  <span style={{ color: '#555' }}>{selectedTopic.angle}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', marginBottom: 2 }}>
+                <span style={{ color: '#888', width: 56, flexShrink: 0 }}>钩子</span>
+                <span>
+                  {selectedTopic.hook_type && <Tag color="orange" style={{fontSize:10}}>{selectedTopic.hook_type}</Tag>}
+                  <span style={{color:'#e67e22',fontWeight:500}}>{selectedTopic.hook}</span>
+                </span>
+              </div>
+              {selectedTopic.content_outline?.length > 0 && (
+                <div style={{ display: 'flex', marginBottom: 2 }}>
+                  <span style={{ color: '#888', width: 56, flexShrink: 0 }}>要点</span>
+                  <span>
+                    {selectedTopic.content_outline.map((p, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: 2 }}>
+                        <span style={{ width: 4, height: 4, borderRadius: 2, background: '#888', flexShrink: 0, marginTop: 7 }} />
+                        <span style={{ color: '#333' }}>{p}</span>
+                      </div>
+                    ))}
+                  </span>
+                </div>
+              )}
+              {selectedTopic.target_emotion && (
+                <div style={{ display: 'flex', marginBottom: 2 }}>
+                  <span style={{ color: '#888', width: 56, flexShrink: 0 }}>情绪</span>
+                  <span style={{ color: '#555' }}>{selectedTopic.target_emotion}</span>
+                </div>
+              )}
+              {selectedTopic.product_link && selectedTopic.product_link !== '纯养号内容暂不植入' && (
+                <div style={{ display: 'flex', marginBottom: 2 }}>
+                  <span style={{ color: '#888', width: 56, flexShrink: 0 }}>产品</span>
+                  <span style={{ color: '#555' }}>{selectedTopic.product_link}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex' }}>
+                <span style={{ color: '#888', width: 56, flexShrink: 0 }}>时长</span>
+                <span>{selectedTopic.duration || 45}s · 自动拆 {shotCount} 镜 · 每镜 {shotDuration}s</span>
+              </div>
+            </div>
+          </Card>
+
+          <Space size="middle" wrap>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>画面比例</span>
+              <Select value={size} onChange={setSize} options={SIZE_OPTIONS} style={{ width: 120 }} />
+            </div>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>分辨率</span>
+              <Select value={resolution} onChange={setResolution} options={RESOLUTION_OPTIONS} style={{ width: 100 }} />
+            </div>
+
+          </Space>
+          </>
+          )}
+        </>
+      )}
+      {selectedTemplateId && (() => {
+        const tpl = competitorTemplates.find(t => t.id === selectedTemplateId)
+        if (!tpl) return null
+        let fw = {}
+        try { fw = JSON.parse(tpl.framework) } catch {}
+        return (
+          <>
+          <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', marginBottom: 8, marginTop: 12 }}
+            onClick={() => setCollapsed(c => ({...c, template: !c.template}))}>
+            {collapsed.template ? <PlusOutlined style={{ marginRight: 6, fontSize: 12 }} /> : <MinusOutlined style={{ marginRight: 6, fontSize: 12 }} />}
+            <span style={{ fontWeight: 600, fontSize: 14 }}>爆款视频模板</span>
           </div>
-        ) : (
-          <div style={{ marginTop: 8, fontSize: 13 }}>
-            <div><strong>主题：</strong>{topic}</div>
-            <div><strong>分镜数量：</strong>{shotCount} 镜 | <strong>每镜时长：</strong>{shotDuration}s</div>
-          </div>
-        )}
-      </Card>
+          {!collapsed.template && (
+<Card size="small" style={{ marginTop: 8, background: '#fafafa' }}>
+                    <div style={{ fontSize: 12, lineHeight: 1.8 }}>
+                      <div style={{ display: 'flex', marginBottom: 2 }}>
+                        <span style={{ color: '#888', width: 56, flexShrink: 0 }}>风格</span>
+                        <span>
+                          {fw.style && <Tag color="blue" style={{fontSize:10}}>{fw.style}</Tag>}
+                          {fw.tone && <Tag color="purple" style={{fontSize:10}}>{fw.tone}</Tag>}
+                          {fw.narrative_arc && <Tag color="cyan" style={{fontSize:10}}>{fw.narrative_arc}</Tag>}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', marginBottom: 2 }}>
+                        <span style={{ color: '#888', width: 56, flexShrink: 0 }}>时长</span>
+                        <span>{fw.total_duration || '?'}s · {(fw.shots || []).length} 镜</span>
+                      </div>
+                      {fw.target_audience && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>受众</span>
+                          <span style={{ color: '#555' }}>
+                            {fw.target_audience.age_range && <Tag color="green" style={{fontSize:10}}>{fw.target_audience.age_range}</Tag>}
+                            {fw.target_audience.gender && fw.target_audience.gender !== '不限' && <Tag color="green" style={{fontSize:10}}>{fw.target_audience.gender}</Tag>}
+                            {fw.target_audience.interests?.slice(0,2).join(' · ')}
+                            {fw.target_audience.pain_points?.slice(0,2).join(' · ')}
+                          </span>
+                        </div>
+                      )}
+                      {fw.hook?.hook_visual && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>钩子画面</span>
+                          <span style={{ color: '#555' }}>{fw.hook.hook_visual.substring(0, 50)}{fw.hook.hook_visual.length > 50 ? '...' : ''}</span>
+                        </div>
+                      )}
+                      {(fw.shots || []).length > 0 && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>分镜</span>
+                          <div style={{ flex: 1 }}>
+                            {fw.shots.map((s, i) => (
+                              <div key={i} style={{ marginBottom: 2 }}>
+                                <Tag color="geekblue" style={{fontSize:10, marginRight:4}}>镜{s.index||i+1}</Tag>
+                                <span style={{color:'#888'}}>{s.duration}s {s.shot_size||''}{s.camera_movement && s.camera_movement !== '固定' ? ' ' + s.camera_movement : ''} {s.shot_type||''}</span>
+                                {s.emotion_beat && <Tag color="volcano" style={{fontSize:10, marginLeft:4}}>{s.emotion_beat}</Tag>}
+                                {s.visual_desc && <div style={{color:'#555', paddingLeft:4}}>{s.visual_desc.substring(0, 40)}{s.visual_desc.length > 40 ? '...' : ''}</div>}
+                                {s.script && <div style={{color:'#e67e22', paddingLeft:4, fontSize:11}}>🎤 {s.script.substring(0, 40)}{s.script.length > 40 ? '...' : ''}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {fw.traffic_strategy?.cta_type && fw.traffic_strategy.cta_type !== '无' && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>CTA</span>
+                          <span style={{ color: '#555' }}>{fw.traffic_strategy.cta_type}{fw.traffic_strategy.cta_placement ? `（第${fw.traffic_strategy.cta_placement}镜）` : ''}</span>
+                        </div>
+                      )}
+                      {fw.replicability?.copyable_elements?.length > 0 && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>可复用</span>
+                          <span style={{ color: '#555' }}>{fw.replicability.copyable_elements.slice(0, 3).join(' · ')}</span>
+                        </div>
+                      )}
+                      {fw.replicability?.winning_factors?.length > 0 && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>爆款因子</span>
+                          <span style={{ color: '#555' }}>{fw.replicability.winning_factors.slice(0, 3).join(' · ')}</span>
+                        </div>
+                      )}
+                      {fw.replicability?.improvement_opportunities?.length > 0 && (
+                        <div style={{ display: 'flex', marginBottom: 2 }}>
+                          <span style={{ color: '#888', width: 56, flexShrink: 0 }}>改进点</span>
+                          <span style={{ color: '#555' }}>{fw.replicability.improvement_opportunities.slice(0, 2).join(' · ')}</span>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+          )}
+          </>
+        )
+      })()}
 
       <Card title={<span><VideoCameraOutlined style={{ marginRight: 6 }} />分镜方案 · 点击编辑</span>}
         extra={
@@ -733,10 +888,7 @@ export default function TextToVideo() {
             <Tag color="blue">分镜 {idx + 1}</Tag>
             <Space size={4}>
               <Tag>{shot.duration || shotDuration}秒</Tag>
-              <Tooltip title="重新生成此分镜">
-                <Button size="small" type="text" icon={<ReloadOutlined />}
-                  loading={regeneratingIndex === idx} onClick={() => regenerateShot(idx)} />
-              </Tooltip>
+
             </Space>
           </div>
           <div style={{ marginBottom: 8 }}>
@@ -883,10 +1035,17 @@ export default function TextToVideo() {
       children: (
         <div style={{ maxWidth: 780 }}>
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#142528', letterSpacing: '-0.3px' }}>文生视频</h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#8c8c8c' }}>
-          AI 智能分镜 — 输入主题自动拆分分镜，逐镜编辑后生成完整视频
-        </p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#142528", letterSpacing: "-0.3px" }}>文生视频</h2>
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: "#8c8c8c" }}>
+              AI 智能分镜 — 输入主题自动拆分分镜，逐镜编辑后生成完整视频
+            </p>
+          </div>
+          <Tooltip title="恢复初始状态">
+            <Button size="small" icon={<ReloadOutlined />} onClick={resetAll}>重置</Button>
+          </Tooltip>
+        </div>
       </div>
 
       <Steps
