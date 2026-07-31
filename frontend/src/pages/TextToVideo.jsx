@@ -410,7 +410,7 @@ export default function TextToVideo() {
                         <div style={{ display: 'flex', marginBottom: 2 }}>
                           <span style={{ color: '#888', width: 48, flexShrink: 0 }}>分镜</span>
                           <div style={{ flex: 1 }}>
-                            {fw.shots.slice(0, 5).map((s, i) => (
+                            {fw.shots.map((s, i) => (
                               <div key={i} style={{ marginBottom: 2 }}>
                                 <Tag color="geekblue" style={{fontSize:10, marginRight:4}}>镜{s.index||i+1}</Tag>
                                 <span style={{color:'#888'}}>{s.duration}s {s.shot_size||''} {s.shot_type||''}</span>
@@ -579,7 +579,7 @@ export default function TextToVideo() {
                         <div style={{ display: 'flex', marginBottom: 2 }}>
                           <span style={{ color: '#888', width: 48, flexShrink: 0 }}>分镜</span>
                           <div style={{ flex: 1 }}>
-                            {fw.shots.slice(0, 5).map((s, i) => (
+                            {fw.shots.map((s, i) => (
                               <div key={i} style={{ marginBottom: 2 }}>
                                 <Tag color="geekblue" style={{fontSize:10, marginRight:4}}>镜{s.index||i+1}</Tag>
                                 <span style={{color:'#888'}}>{s.duration}s {s.shot_size||''} {s.shot_type||''}</span>
