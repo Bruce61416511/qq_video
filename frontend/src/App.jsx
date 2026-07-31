@@ -1,6 +1,6 @@
 import { useRef } from "react"
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom"
-import { Layout, Menu, theme } from "antd"
+import { Layout, Menu, ConfigProvider, theme } from "antd"
 import {
   TeamOutlined, VideoCameraOutlined, ThunderboltOutlined,
   HistoryOutlined, SettingOutlined, FireOutlined,
@@ -23,6 +23,26 @@ const menuItems = [
   { key: "/settings", icon: <SettingOutlined />, label: "设置" },
 ]
 
+const brandTheme = {
+  token: {
+    colorPrimary: "#005d50",
+    colorInfo: "#005d50",
+    colorSuccess: "#17857e",
+    colorWarning: "#e6a817",
+    colorError: "#c53030",
+    borderRadius: 10,
+    borderRadiusLG: 14,
+    fontFamily: "Inter, ui-sans-serif, system-ui, BlinkMacSystemFont, Segoe UI, Microsoft YaHei, PingFang SC, sans-serif",
+  },
+  components: {
+    Menu: {
+      darkItemBg: "transparent",
+      darkItemSelectedBg: "rgba(255,255,255,0.15)",
+      darkItemHoverBg: "rgba(255,255,255,0.08)",
+    },
+  },
+}
+
 export default function App() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -30,47 +50,77 @@ export default function App() {
   const contentRef = useRef(null)
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
-      <Sider width={220} style={{ background: "#001529" }}>
-        <div style={{
-          height: 64, display: "flex", alignItems: "center",
-          justifyContent: "center", borderBottom: "1px solid rgba(255,255,255,0.06)",
+    <ConfigProvider theme={brandTheme}>
+      <Layout style={{ minHeight: "100vh" }}>
+        <Sider width={230} style={{
+          background: "linear-gradient(180deg, #00473f 0%, #005d50 40%, #006d60 100%)",
+          borderRight: "none",
         }}>
-          <span style={{ color: "#fff", fontSize: 17, fontWeight: 700, letterSpacing: 1 }}>
-            视频号助手
-          </span>
-        </div>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[location.pathname]}
-          items={menuItems}
-          onClick={({ key }) => navigate(key)}
-          style={{ borderRight: 0, marginTop: 4 }}
-        />
-        <div style={{
-          position: "absolute", bottom: 0, width: "100%", padding: "12px 24px",
-          borderTop: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.3)",
-          fontSize: 12,
-        }}>
-          账号上限 10 个
-        </div>
-      </Sider>
-      <Layout>
-        <Content ref={contentRef} style={{
-          margin: 24, padding: 24, background: t.colorBgContainer,
-          borderRadius: t.borderRadiusLG, minHeight: "calc(100vh - 48px)",
-        }}>
-          <Routes>
-            <Route path="/" element={<Accounts />} />
-            <Route path="/trends" element={<TrendBoard />} />
-            <Route path="/media" element={<MediaLibrary />} />
-            <Route path="/text-to-video" element={<TextToVideo />} />
-            <Route path="/tasks" element={<PublishTasks />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </Content>
+          <div style={{
+            height: 68, display: "flex", alignItems: "center", gap: 10,
+            padding: "0 20px", borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: 10,
+              background: "linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.08) 100%)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 18, fontWeight: 800, color: "#fff",
+              backdropFilter: "blur(4px)",
+            }}>
+              V
+            </div>
+            <div>
+              <div style={{ color: "#fff", fontSize: 15, fontWeight: 700, lineHeight: 1.2 }}>
+                视频号助手
+              </div>
+              <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 11 }}>
+                素人矩阵管理
+              </div>
+            </div>
+          </div>
+
+          <Menu
+            theme="dark"
+            mode="inline"
+            selectedKeys={[location.pathname]}
+            items={menuItems}
+            onClick={({ key }) => navigate(key)}
+            style={{
+              background: "transparent", borderRight: 0, marginTop: 8,
+              padding: "0 8px", fontWeight: 500,
+            }}
+          />
+
+          <div style={{
+            position: "absolute", bottom: 0, width: "100%",
+            padding: "14px 20px",
+            borderTop: "1px solid rgba(255,255,255,0.06)",
+            background: "rgba(0,0,0,0.1)",
+            backdropFilter: "blur(8px)",
+            color: "rgba(255,255,255,0.35)", fontSize: 12,
+          }}>
+            账号上限 10 个
+          </div>
+        </Sider>
+
+        <Layout style={{ background: "#f5f7f6" }}>
+          <Content ref={contentRef} style={{
+            margin: 20, padding: 28, background: "#fff",
+            borderRadius: 16,
+            minHeight: "calc(100vh - 40px)",
+            boxShadow: "0 4px 24px rgba(0,0,0,0.04)",
+          }}>
+            <Routes>
+              <Route path="/" element={<Accounts />} />
+              <Route path="/trends" element={<TrendBoard />} />
+              <Route path="/media" element={<MediaLibrary />} />
+              <Route path="/text-to-video" element={<TextToVideo />} />
+              <Route path="/tasks" element={<PublishTasks />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </Content>
+        </Layout>
       </Layout>
-    </Layout>
+    </ConfigProvider>
   )
 }
