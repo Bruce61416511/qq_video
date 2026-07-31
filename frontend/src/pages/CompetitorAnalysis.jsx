@@ -87,6 +87,11 @@ export default function CompetitorAnalysis() {
     } catch (e) { message.error("删除失败") }
   }
 
+  const parseFramework = (f) => {
+    if (!f) return {}
+    try { return typeof f === "string" ? JSON.parse(f) : f } catch { return {} }
+  }
+
   const handleView = async (template) => {
     try {
       const res = await fetch(BASE + "/media/competitor-templates/" + template.id)
@@ -121,16 +126,28 @@ export default function CompetitorAnalysis() {
 
   const shotColumns = [
     { title: "镜号", dataIndex: "index", width: 50, render: (v) => <Tag color="green">镜{v}</Tag> },
-    { title: "时长", dataIndex: "duration", width: 60, render: (v) => v + "s" },
-    { title: "类型", dataIndex: "type", width: 80, render: (v) => <Tag>{v}</Tag> },
-    { title: "画面描述", dataIndex: "desc", ellipsis: true },
+    { title: "时长", dataIndex: "duration", width: 55, render: (v) => v + "s" },
+    { title: "类型", dataIndex: "shot_type", width: 70, render: (v) => <Tag>{v}</Tag> },
+    { title: "景别", dataIndex: "shot_size", width: 55, render: (v) => v && <Tag color="blue">{v}</Tag> },
+    { title: "运镜", dataIndex: "camera_movement", width: 60, render: (v) => v && <Tag color="purple">{v}</Tag> },
+    { title: "画面描述", dataIndex: "visual_desc", ellipsis: true },
     { title: "配音文案", dataIndex: "script", ellipsis: true },
   ]
 
   const templateColumns = [
-    { title: "名称", dataIndex: "name", key: "name", width: 200 },
-    { title: "来源", dataIndex: "source", key: "source", ellipsis: true, width: 250, render: (t) => t?.substring(0, 60) || "-" },
-    { title: "创建时间", dataIndex: "created_at", key: "created_at", width: 160 },
+    { title: "名称", dataIndex: "name", key: "name", width: 180, render: (t, r) => {
+      const fw = parseFramework(r.framework)
+      return <div><div style={{fontWeight:500}}>{t}</div><div style={{fontSize:12,color:"#888"}}>{fw?.style ? fw.style + ' · ' : ''}{fw?.total_duration ? fw.total_duration + 's' : ''}{fw?.shots ? ' · ' + fw.shots.length + '镜' : ''}</div></div>
+    }},
+    { title: "叙事", dataIndex: "framework", key: "narrative", width: 120, render: (f) => {
+      const fw = parseFramework(f)
+      return <Tag>{fw?.narrative_arc || '-'}</Tag>
+    }},
+    { title: "钩子", dataIndex: "framework", key: "hook", ellipsis: true, render: (f) => {
+      const fw = parseFramework(f)
+      return fw?.hook?.hook_text || '-'
+    }},
+    { title: "创建时间", dataIndex: "created_at", key: "created_at", width: 150 },
     {
       title: "操作", key: "action", width: 200,
       render: (_, record) => (
@@ -276,38 +293,125 @@ export default function CompetitorAnalysis() {
             pagination={{ pageSize: 15 }}
             locale={{ emptyText: "暂无模板，去拆解视频页创建" }}
           />
-          {viewTemplate && (
+          {viewTemplate && (() => {
+            let fw = {}
+            try {
+              fw = typeof viewTemplate.framework === "string"
+                ? JSON.parse(viewTemplate.framework) : viewTemplate.framework
+            } catch (e) {}
+
+            return (
             <Drawer
-              title={viewTemplate.name}
+              title={<div><span style={{marginRight:12}}>{viewTemplate.name}</span><Tag color="blue">{fw.style || "-"}</Tag><Tag>{fw.total_duration || "?"}s · {(fw.shots||[]).length}镜</Tag></div>}
               open={!!viewTemplate}
               onClose={() => setViewTemplate(null)}
-              width={700}
+              width={780}
             >
-              <p style={{ color: "#8c8c8c", fontSize: 13, marginBottom: 12 }}>
-                来源：{viewTemplate.source?.substring(0, 100) || "-"}
-              </p>
-              {(() => {
-                try {
-                  const fw = typeof viewTemplate.framework === "string"
-                    ? JSON.parse(viewTemplate.framework) : viewTemplate.framework
-                  return (
-                    <div>
-                      <Space style={{ marginBottom: 12 }}>
-                        {fw.style && <Tag color="blue">{fw.style}</Tag>}
-                        {fw.total_duration && <Tag color="green">{fw.total_duration}s</Tag>}
-                        {fw.hook_pattern && <Tag color="orange">{fw.hook_pattern}</Tag>}
-                      </Space>
-                      {fw.shots && (
-                        <Table columns={shotColumns} dataSource={fw.shots} rowKey="index" pagination={false} size="small" />
-                      )}
+              {/* 整体信息 */}
+              <Card size="small" title="基本信息" style={{ marginBottom: 12 }}>
+                <Space wrap size={[8,8]}>
+                  <Tag color="blue">风格：{fw.style || "-"}</Tag>
+                  <Tag color="purple">情绪：{fw.tone || "-"}</Tag>
+                  <Tag color="cyan">叙事：{fw.narrative_arc || "-"}</Tag>
+                  <Tag>时长：{fw.total_duration || "?"}s</Tag>
+                </Space>
+                {fw.target_audience && (
+                  <div style={{marginTop:8,fontSize:12,color:"#666"}}>
+                    目标人群：{fw.target_audience.age_range && <Tag color="geekblue" style={{fontSize:11}}>{fw.target_audience.age_range}岁</Tag>}
+                    {fw.target_audience.gender && fw.target_audience.gender !== "不限" && <Tag style={{fontSize:11}}>{fw.target_audience.gender}</Tag>}
+                    {fw.target_audience.interests?.map((v,i) => <Tag key={i} color="green" style={{fontSize:11}}>{v}</Tag>)}
+                    {fw.target_audience.pain_points?.length > 0 && <div style={{marginTop:4}}>痛点：{fw.target_audience.pain_points.join(" · ")}</div>}
+                  </div>
+                )}
+              </Card>
+
+              {/* 钩子 */}
+              {fw.hook && (
+                <Card size="small" title={<span><ThunderboltOutlined style={{color:"#faad14"}} /> 开头钩子</span>} style={{ marginBottom: 12 }}>
+                  <Space wrap>
+                    <Tag color="orange">{fw.hook.hook_type}</Tag>
+                  </Space>
+                  <div style={{marginTop:6}}>
+                    <p style={{fontSize:13,color:"#333",margin:"4px 0"}}><strong>口播：</strong>{fw.hook.hook_text || "-"}</p>
+                    <p style={{fontSize:13,color:"#666",margin:"4px 0"}}><strong>画面：</strong>{fw.hook.hook_visual || "-"}</p>
+                  </div>
+                </Card>
+              )}
+
+              {/* 分镜 */}
+              {fw.shots && fw.shots.length > 0 && (
+                <Card size="small" title={<span><FileTextOutlined /> 分镜拆解（{fw.shots.length}镜）</span>} style={{ marginBottom: 12 }}>
+                  <Table columns={shotColumns} dataSource={fw.shots} rowKey="index" pagination={false} size="small" scroll={{x:700}} />
+                </Card>
+              )}
+
+              {/* 音频 */}
+              {fw.audio && (
+                <Card size="small" title="音频设计" style={{ marginBottom: 12 }}>
+                  <Space wrap>
+                    <Tag color="magenta">BGM：{fw.audio.bgm_style || "-"}</Tag>
+                  </Space>
+                  {fw.audio.bgm_emotion_curve && <p style={{fontSize:13,color:"#666",margin:"6px 0 0"}}>情绪曲线：{fw.audio.bgm_emotion_curve}</p>}
+                  {fw.audio.sound_effects?.length > 0 && (
+                    <div style={{marginTop:4}}>
+                      {fw.audio.sound_effects.map((se, i) => (
+                        <Tag key={i} color="gold" style={{fontSize:11}}>
+                          {typeof se === "string" ? se : `${se.time}s ${se.effect}`}
+                        </Tag>
+                      ))}
                     </div>
-                  )
-                } catch (e) {
-                  return <pre style={{ fontSize: 12 }}>{viewTemplate.framework}</pre>
-                }
-              })()}
+                  )}
+                </Card>
+              )}
+
+              {/* 流量策略 */}
+              {fw.traffic_strategy && (
+                <Card size="small" title="流量策略" style={{ marginBottom: 12 }}>
+                  {fw.traffic_strategy.retention_tactics?.length > 0 && (
+                    <div style={{marginBottom:6}}>
+                      <span style={{fontSize:12,color:"#888"}}>留存技巧：</span>
+                      {fw.traffic_strategy.retention_tactics.map((v,i) => <Tag key={i} color="blue" style={{fontSize:11}}>{v}</Tag>)}
+                    </div>
+                  )}
+                  <Space wrap>
+                    {fw.traffic_strategy.cta_type && <Tag color="red">CTA：{fw.traffic_strategy.cta_type}</Tag>}
+                    {fw.traffic_strategy.cta_placement > 0 && <Tag>出现在镜{fw.traffic_strategy.cta_placement}</Tag>}
+                  </Space>
+                  {fw.traffic_strategy.hashtag_suggestions?.length > 0 && (
+                    <div style={{marginTop:6}}>
+                      {fw.traffic_strategy.hashtag_suggestions.map((v,i) => <Tag key={i} color="green" style={{fontSize:11}}>{v}</Tag>)}
+                    </div>
+                  )}
+                </Card>
+              )}
+
+              {/* 可复制要素 */}
+              {fw.replicability && (
+                <Card size="small" title="可复制要素" style={{ marginBottom: 12 }}>
+                  {fw.replicability.winning_factors?.length > 0 && (
+                    <div style={{marginBottom:8}}>
+                      <div style={{fontSize:12,fontWeight:500,marginBottom:4}}>爆款因子</div>
+                      {fw.replicability.winning_factors.map((v,i) => <Tag key={i} color="volcano" style={{fontSize:11,marginBottom:4}}>{i+1}. {v}</Tag>)}
+                    </div>
+                  )}
+                  {fw.replicability.copyable_elements?.length > 0 && (
+                    <div style={{marginBottom:8}}>
+                      <div style={{fontSize:12,fontWeight:500,marginBottom:4}}>可直接复用</div>
+                      {fw.replicability.copyable_elements.map((v,i) => <Tag key={i} color="purple" style={{fontSize:11,marginBottom:4}}>{i+1}. {v}</Tag>)}
+                    </div>
+                  )}
+                  {fw.replicability.improvement_opportunities?.length > 0 && (
+                    <div>
+                      <div style={{fontSize:12,fontWeight:500,marginBottom:4}}>改进空间</div>
+                      {fw.replicability.improvement_opportunities.map((v,i) => <Tag key={i} color="default" style={{fontSize:11,marginBottom:4}}>{i+1}. {v}</Tag>)}
+                    </div>
+                  )}
+                </Card>
+              )}
+
             </Drawer>
-          )}
+            )
+          })()}
         </div>
       ),
     },

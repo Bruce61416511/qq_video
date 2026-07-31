@@ -10,7 +10,7 @@ from sqlalchemy import select, delete
 from ..database import get_db, async_session
 from ..models import Media, MediaShot, MediaStatus
 from ..schemas.schemas import MediaOut, MediaShotOut, VideoGenerateRequest, GenerateShotsRequest, ShotItem
-from ..config import UPLOAD_DIR
+from ..config import UPLOAD_DIR, get_setting
 
 router = APIRouter(prefix="/api/media", tags=["media"])
 
@@ -85,6 +85,7 @@ async def generate_shots_from_topic(data: dict = Body(...)):
         video_topic=data.get("video_topic", ""),
         angle=data.get("angle", ""),
         hook=data.get("hook", ""),
+        hook_type=data.get("hook_type", ""),
         content_outline=data.get("content_outline", []),
         target_emotion=data.get("target_emotion", ""),
         product_link=data.get("product_link", ""),
@@ -426,11 +427,12 @@ async def analyze_competitor_video(file: UploadFile = File(...)):
             ffmpeg, "-i", str(video_path)
         ], capture_output=True, text=True, timeout=10)
         duration = 30
-        for line in probe.stderr.split("\n"):
-            if "Duration:" in line:
-                parts = line.split("Duration:")[1].strip().split(",")[0].split(":")
-                try: duration = int(float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2]))
-                except: pass
+        if probe.stderr:
+            for line in probe.stderr.split("\n"):
+                if "Duration:" in line:
+                    parts = line.split("Duration:")[1].strip().split(",")[0].split(":")
+                    try: duration = int(float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2]))
+                    except: pass
 
         # Encode first 10 frames as base64
         frame_b64_list = []
@@ -439,29 +441,20 @@ async def analyze_competitor_video(file: UploadFile = File(...)):
             frame_b64_list.append(b64)
 
         # Call multimodal LLM for analysis
-        from ..services.llm_service import get_setting, _load_prompt
+        from ..services.llm_service import _load_prompt
 
-        api_key = None
-        try:
-            import asyncio
-            api_key = asyncio.run(get_setting("llm_api_key"))
-        except:
-            try:
-                loop = asyncio.get_running_loop()
-                api_key = loop.run_until_complete(get_setting("llm_api_key"))
-            except:
-                pass
-
+        api_key = await get_setting("llm_api_key")
         if not api_key:
             return {"error": "未配置 LLM API Key"}
 
-        model = "qwen-vl-plus"
-        try:
-            m = asyncio.run(get_setting("llm_model"))
-            if m: model = m.replace("qwen-plus", "qwen-vl-plus").replace("qwen-max", "qwen-vl-max")
-        except: pass
+        model = (await get_setting("llm_model")) or "qwen-vl-plus"
+        if "qwen-plus" in model:
+            model = model.replace("qwen-plus", "qwen-vl-plus")
+        elif "qwen-max" in model:
+            model = model.replace("qwen-max", "qwen-vl-max")
 
-        base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        base_url = (await get_setting("llm_base_url")) or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
 
         from openai import OpenAI
         client = OpenAI(api_key=api_key, base_url=base_url)

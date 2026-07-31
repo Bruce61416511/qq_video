@@ -121,9 +121,10 @@ async def generate_shot_plan_from_topic(
     video_topic: str,
     angle: str,
     hook: str,
-    content_outline: list,
-    target_emotion: str,
-    product_link: str,
+    hook_type: str = "",
+    content_outline: list = None,
+    target_emotion: str = "",
+    product_link: str = "",
     total_duration: int = 45,
     competitor_framework: str = "",
 ) -> list[dict]:
@@ -131,6 +132,7 @@ async def generate_shot_plan_from_topic(
     import os, json, re
     from openai import AsyncOpenAI
 
+    content_outline = content_outline or []
     outline_count = len(content_outline) if content_outline else 0
     if outline_count == 0:
         outline_count = 3
@@ -144,9 +146,11 @@ async def generate_shot_plan_from_topic(
     prompt = TOPIC_SHOT_PROMPT.format(hook_dur=hook_dur, end_dur=end_dur)
 
     outline_text = "\n".join(f"{i+1}. {o}" for i, o in enumerate(content_outline)) if content_outline else "无"
+
     user_content = f"""视频选题：{video_topic}
 切入角度：{angle}
 黄金3秒：{hook}
+钩子类型：{hook_type}
 目标情绪：{target_emotion}
 产品关联：{product_link}
 总时长：{total_duration}s

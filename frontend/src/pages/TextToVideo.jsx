@@ -88,6 +88,20 @@ export default function TextToVideo() {
   const [shotDuration, setShotDuration] = useState('5')
 
   // Handle topic selection from dropdown
+  const markTopicUsed = (topic) => {
+    const sourceTitle = topic?.source_title || topic?.video_topic || ""
+    const id = sourceTitle || Date.now().toString()
+    setUsedTopics(prev => {
+      const next = prev.includes(id) ? prev : [...prev, id]
+      localStorage.setItem("used_topic_ids", JSON.stringify(next))
+      return next
+    })
+  }
+  const isTopicUsed = (topic) => {
+    const sourceTitle = topic?.source_title || topic?.video_topic || ""
+    return usedTopics.includes(sourceTitle)
+  }
+
   const handleTopicSelect = (idx) => {
     if (idx === undefined || idx === null) {
       setSelectedTopicId(null)
@@ -110,6 +124,9 @@ export default function TextToVideo() {
 
   // Step 2 - shots
   const [shots, setShots] = useState([])
+  const [usedTopics, setUsedTopics] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("used_topic_ids") || "[]") } catch { return [] }
+  })
   const [shotsLoading, setShotsLoading] = useState(false)
   // 持久化分镜状态到 localStorage（仅在有数据时保存，防止空状态覆盖）
   useEffect(() => {
@@ -151,6 +168,7 @@ export default function TextToVideo() {
         const data = await mediaApi.generateShotsFromTopic(topicWithTemplate)
         setShots(data.shots || [])
         setCurrent(1)
+        markTopicUsed(selectedTopic)
         message.success(`已生成 ${data.shots.length} 个分镜方案`)
       } catch (e) {
         message.error('生成分镜失败: ' + e.message)
@@ -256,15 +274,33 @@ export default function TextToVideo() {
         <div>
           <Card size="small" style={{ background: '#eefcf8', border: '1px solid #a9ebe0', marginBottom: 16 }}>
             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>✅ 选题确认</div>
+            {selectedTopic.source_title && <p style={{ margin: '4px 0', fontSize: 12, color: '#888' }}>📰 来源：{selectedTopic.source_title}</p>}
             <p style={{ margin: '4px 0', fontSize: 13 }}><strong>标题：</strong>{selectedTopic.video_topic}</p>
             {selectedTopic.angle && <p style={{ margin: '4px 0', fontSize: 13 }}><strong>角度：</strong>{selectedTopic.angle}</p>}
-            {selectedTopic.hook && <p style={{ margin: '4px 0', fontSize: 13, color: '#e67e22' }}><strong>⚡ 黄金3秒：</strong>{selectedTopic.hook}</p>}
+            <div style={{ margin: '4px 0', fontSize: 13, color: '#e67e22' }}>
+              <strong>⚡ 黄金3秒：</strong>{selectedTopic.hook}
+              {selectedTopic.hook_type && <Tag color="orange" style={{fontSize:11,marginLeft:8}}>{selectedTopic.hook_type}</Tag>}
+            </div>
             {selectedTopic.content_outline?.length > 0 && (
-              <div style={{ margin: '4px 0', fontSize: 13 }}>
-                <strong>📝 内容结构：</strong>
-                <ol style={{ margin: '4px 0 0 16px' }}>
-                  {selectedTopic.content_outline.map((p, i) => <li key={i}>{p}</li>)}
-                </ol>
+              <div style={{ margin: '8px 0 0' }}>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: '#333' }}>
+                  📝 内容结构 · {selectedTopic.content_outline.length} 个要点
+                </div>
+                {selectedTopic.content_outline.map((p, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'flex-start',
+                    padding: '8px 10px', marginBottom: 6,
+                    background: '#f7f8fa', borderRadius: 8,
+                    
+                    gap: 8
+                  }}>
+                    <span style={{
+                      width: 6, height: 6, borderRadius: 3,
+                      background: '#333', flexShrink: 0, marginTop: 8
+                    }} />
+                    <span style={{ fontSize: 13, lineHeight: '22px', color: '#333' }}>{p}</span>
+                  </div>
+                ))}
               </div>
             )}
             <div style={{ marginTop: 8, fontSize: 13, color: '#888' }}>
@@ -351,14 +387,29 @@ export default function TextToVideo() {
         </div>
         {selectedTopic ? (
           <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.8 }}>
+            {selectedTopic.source_title && <div style={{ color: '#888', fontSize: 12 }}>📰 来源：{selectedTopic.source_title}</div>}
             <div><strong>标题：</strong>{selectedTopic.video_topic}</div>
+            {selectedTopic.hook_type && <div><strong>🎯 钩子类型：</strong><Tag color="orange">{selectedTopic.hook_type}</Tag></div>}
             {selectedTopic.angle && <div><strong>角度：</strong>{selectedTopic.angle}</div>}
             {selectedTopic.hook && <div style={{ color: '#e67e22' }}><strong>⚡ 黄金3秒：</strong>{selectedTopic.hook}</div>}
             {selectedTopic.content_outline?.length > 0 && (
-              <div><strong>📝 内容要点：</strong>
-                <ol style={{ margin: '4px 0 0 16px', paddingLeft: 0 }}>
-                  {selectedTopic.content_outline.map((p, i) => <li key={i}>{p}</li>)}
-                </ol>
+              <div style={{ marginTop: 6 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>📝 内容要点：</div>
+                {selectedTopic.content_outline.map((p, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'flex-start',
+                    padding: '5px 8px', marginBottom: 4,
+                    background: '#f0faf6', borderRadius: 6,
+                    
+                    gap: 6
+                  }}>
+                    <span style={{
+                      width: 5, height: 5, borderRadius: 3,
+                      background: '#333', flexShrink: 0, marginTop: 7
+                    }} />
+                    <span style={{ fontSize: 12, lineHeight: '18px', color: '#444' }}>{p}</span>
+                  </div>
+                ))}
               </div>
             )}
             {selectedTopic.target_emotion && <div><strong>🎭 目标情绪：</strong>{selectedTopic.target_emotion}</div>}

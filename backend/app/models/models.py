@@ -101,4 +101,4 @@ class CompetitorTemplate(Base):
     name = Column(String, nullable=False)
     source = Column(Text, default="")
     framework = Column(Text, default="{}")
-    created_at = Column(String, default=lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
+    created_at = Column(String, default=lambda: datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
