@@ -1,4 +1,4 @@
-"""
+﻿"""
 LLM 分镜策划服务
 参考 MoneyPrinterTurbo: app/services/llm.py
 支持 OpenAI / DeepSeek / 通义千问 / 智谱 等兼容接口
@@ -125,6 +125,7 @@ async def generate_shot_plan_from_topic(
     target_emotion: str,
     product_link: str,
     total_duration: int = 45,
+    competitor_framework: str = "",
 ) -> list[dict]:
     """从选题结构化数据生成分镜。"""
     import os, json, re
@@ -155,6 +156,16 @@ async def generate_shot_plan_from_topic(
 
 分镜规划：共{shot_count}镜，镜1({hook_dur}s)+中间{outline_count}镜(各{mid_dur}s)+结尾({end_dur}s)
 """
+
+    if competitor_framework:
+        try:
+            fw = json.loads(competitor_framework) if isinstance(competitor_framework, str) else competitor_framework
+            shots_ref = fw.get("shots", [])
+            if shots_ref:
+                ref_text = "\n".join(f"  - 镜{s.get("index", "?")}（{s.get("duration", "?")}s {s.get("type", "")}）：{s.get("desc", "")} | {s.get("script", "")}" for s in shots_ref)
+                user_content += f"""\n\n竞品参考框架（{fw.get("style", "")}）：\n{ref_text}\n\n请参考以上竞品框架的分镜节奏和风格，生成新选题的分镜方案。"""
+        except:
+            pass
 
     api_key = await get_setting("llm_api_key")
     if not api_key:
@@ -336,3 +347,38 @@ def _template_fallback(topic: str, count: int, duration: str) -> list[dict]:
             "duration": duration,
         })
     return shots
+
+ANALYSIS_PROMPT_FILE = "competitor_analysis_prompt.txt"
+
+async def analyze_competitor(source_text: str) -> dict:
+    import json, re
+    from openai import AsyncOpenAI
+
+    prompt = _load_prompt(ANALYSIS_PROMPT_FILE, "你是短视频拆解分析师，输出结构化JSON。")
+
+    api_key = await get_setting("llm_api_key")
+    if not api_key:
+        return {"error": "未配置 LLM API Key"}
+
+    model = (await get_setting("llm_model")) or "qwen-plus"
+    base_url = (await get_setting("llm_base_url")) or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+
+    try:
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": "请拆解以下竞品视频，输出结构化分镜框架 JSON：\n\n" + source_text},
+            ],
+            temperature=0.5,
+            max_tokens=2000,
+        )
+        result = response.choices[0].message.content
+        json_match = re.search(r'\{[\s\S]*\}', result)
+        if json_match:
+            return json.loads(json_match.group())
+        return {"error": "LLM 未返回有效 JSON", "raw": result}
+    except Exception as e:
+        return {"error": str(e)}

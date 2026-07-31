@@ -94,3 +94,11 @@ class Setting(Base):
     key = Column(String(100), unique=True, nullable=False)
     value = Column(Text, default="")
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+class CompetitorTemplate(Base):
+    __tablename__ = "competitor_templates"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    source = Column(Text, default="")
+    framework = Column(Text, default="{}")
+    created_at = Column(String, default=lambda: datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))

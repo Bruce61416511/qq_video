@@ -4,6 +4,7 @@ import { Layout, Menu, ConfigProvider, theme } from "antd"
 import {
   TeamOutlined, VideoCameraOutlined, ThunderboltOutlined,
   HistoryOutlined, SettingOutlined, FireOutlined,
+  ExperimentOutlined,
 } from "@ant-design/icons"
 import Accounts from "./pages/Accounts"
 import MediaLibrary from "./pages/MediaLibrary"
@@ -11,12 +12,14 @@ import TextToVideo from "./pages/TextToVideo"
 import PublishTasks from "./pages/PublishTasks"
 import Settings from "./pages/Settings"
 import TrendBoard from "./pages/TrendBoard"
+import CompetitorAnalysis from "./pages/CompetitorAnalysis"
 
 const { Sider, Content } = Layout
 
 const menuItems = [
   { key: "/", icon: <TeamOutlined />, label: "账号管理" },
   { key: "/trends", icon: <FireOutlined />, label: "热搜看板" },
+  { key: "/competitor", icon: <ExperimentOutlined />, label: "爆款拆解" },
   { key: "/text-to-video", icon: <ThunderboltOutlined />, label: "文生视频" },
   { key: "/media", icon: <VideoCameraOutlined />, label: "素材管理" },
   { key: "/tasks", icon: <HistoryOutlined />, label: "发布记录" },
@@ -130,6 +133,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Accounts />} />
               <Route path="/trends" element={<TrendBoard />} />
+              <Route path="/competitor" element={<CompetitorAnalysis />} />
               <Route path="/media" element={<MediaLibrary />} />
               <Route path="/text-to-video" element={<TextToVideo />} />
               <Route path="/tasks" element={<PublishTasks />} />

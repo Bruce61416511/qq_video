@@ -212,6 +212,7 @@ CONFIG_FILES = {
     "topic_to_video_prompt": "topic_to_video_prompt.txt",
     "shot_topic_prompt": "shot_topic_prompt.txt",
     "manual_topic_prompt": "manual_topic_prompt.txt",
+    "competitor_analysis_prompt": "competitor_analysis_prompt.txt",
 }
 
 @router.get("/config/files")
@@ -236,6 +237,7 @@ async def list_config_files():
                 "topic_to_video_prompt": "视频选题提示词：热搜转为可拍摄选题",
                 "shot_topic_prompt": "选题拆镜提示词：从选题自动生成分镜方案",
                 "manual_topic_prompt": "手动拆镜提示词：用户输入主题时生成分镜",
+                "competitor_analysis_prompt": "竞品拆解提示词：分析竞品视频输出框架",
             }.get(key, ""),
         })
     return {"files": files}

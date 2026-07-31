@@ -1,9 +1,10 @@
-import os
+﻿import os
 import uuid
 import asyncio
 import traceback
 from datetime import datetime
 from fastapi import APIRouter, Body, Depends, UploadFile, File, HTTPException
+from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from ..database import get_db, async_session
@@ -88,6 +89,7 @@ async def generate_shots_from_topic(data: dict = Body(...)):
         target_emotion=data.get("target_emotion", ""),
         product_link=data.get("product_link", ""),
         total_duration=data.get("duration", 45),
+        competitor_framework=data.get("competitor_framework", ""),
     )
     return {"shots": shots}
 
@@ -372,3 +374,193 @@ async def _create_placeholder_clip(prompt: str, duration: str, size: str) -> str
     except Exception as e:
         print(f"[Pipeline] placeholder error: {e}")
     return ""
+
+
+
+# ====== 竞品视频拆解（上传视频） ======
+import subprocess, base64, tempfile
+
+@router.post("/analyze-competitor-video")
+async def analyze_competitor_video(file: UploadFile = File(...)):
+    if not file.filename:
+        raise HTTPException(400, "请上传视频文件")
+
+    # Save uploaded video
+    video_bytes = await file.read()
+    uploads_dir = Path(__file__).parent.parent.parent / "uploads"
+    uploads_dir.mkdir(exist_ok=True)
+    video_path = uploads_dir / f"competitor_{file.filename}"
+    video_path.write_bytes(video_bytes)
+
+    screenshots_dir = uploads_dir / "screenshots"
+    screenshots_dir.mkdir(exist_ok=True)
+
+    # Clean old screenshots
+    for f in screenshots_dir.glob("*.jpg"):
+        try: f.unlink()
+        except: pass
+
+    try:
+        # FFmpeg: extract 1 keyframe per second (using system PATH)
+        ffmpeg = "ffmpeg"
+
+        subprocess.run([
+            ffmpeg, "-i", str(video_path), "-vf", "fps=1",
+            "-q:v", "2", str(screenshots_dir / "frame_%03d.jpg"),
+            "-y"
+        ], capture_output=True, timeout=60)
+
+        # FFmpeg: extract audio
+        audio_path = uploads_dir / "competitor_audio.mp3"
+        subprocess.run([
+            ffmpeg, "-i", str(video_path), "-q:a", "2",
+            "-map", "a", str(audio_path), "-y"
+        ], capture_output=True, timeout=30)
+
+        # List frames
+        frames = sorted(screenshots_dir.glob("frame_*.jpg"))
+        frame_count = len(frames)
+
+        # Get video duration
+        probe = subprocess.run([
+            ffmpeg, "-i", str(video_path)
+        ], capture_output=True, text=True, timeout=10)
+        duration = 30
+        for line in probe.stderr.split("\n"):
+            if "Duration:" in line:
+                parts = line.split("Duration:")[1].strip().split(",")[0].split(":")
+                try: duration = int(float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2]))
+                except: pass
+
+        # Encode first 10 frames as base64
+        frame_b64_list = []
+        for fp in frames[:10]:
+            b64 = base64.b64encode(fp.read_bytes()).decode()
+            frame_b64_list.append(b64)
+
+        # Call multimodal LLM for analysis
+        from ..services.llm_service import get_setting, _load_prompt
+
+        api_key = None
+        try:
+            import asyncio
+            api_key = asyncio.run(get_setting("llm_api_key"))
+        except:
+            try:
+                loop = asyncio.get_running_loop()
+                api_key = loop.run_until_complete(get_setting("llm_api_key"))
+            except:
+                pass
+
+        if not api_key:
+            return {"error": "未配置 LLM API Key"}
+
+        model = "qwen-vl-plus"
+        try:
+            m = asyncio.run(get_setting("llm_model"))
+            if m: model = m.replace("qwen-plus", "qwen-vl-plus").replace("qwen-max", "qwen-vl-max")
+        except: pass
+
+        base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, base_url=base_url)
+
+        prompt_text = _load_prompt("competitor_analysis_prompt.txt", "你是短视频拆解分析师，输出JSON框架。")
+
+        # Build messages with frames
+        content_parts = [{"type": "text", "text": prompt_text + f"\n\n视频时长：{duration}s，共{frame_count}帧。请拆解这个视频的分镜框架（JSON格式）。"}]
+
+        for b64 in frame_b64_list[:8]:
+            content_parts.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": content_parts}],
+            temperature=0.5,
+            max_tokens=2000,
+        )
+
+        result_text = response.choices[0].message.content
+        import json, re
+        json_match = re.search(r'\{[\s\S]*\}', result_text)
+        if json_match:
+            result = json.loads(json_match.group())
+            result["frame_count"] = frame_count
+            result["duration"] = duration
+            result["source_file"] = file.filename
+            return result
+
+        return {"error": "LLM未返回有效JSON", "raw": result_text[:500]}
+
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        # Cleanup video
+        try: video_path.unlink()
+        except: pass
+        try: audio_path.unlink()
+        except: pass
+
+# ====== 竞品拆解 ======
+
+from ..models.models import CompetitorTemplate
+from ..services.llm_service import analyze_competitor
+
+@router.post("/analyze-competitor")
+async def analyze_competitor_route(data: dict = Body(...)):
+    source_text = data.get("source", "")
+    if not source_text.strip():
+        return {"error": "请输入竞品视频描述"}
+    result = await analyze_competitor(source_text)
+    return result
+
+@router.get("/competitor-templates")
+async def list_competitor_templates(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(CompetitorTemplate).order_by(CompetitorTemplate.id.desc())
+    )
+    templates = result.scalars().all()
+    return [{"id": t.id, "name": t.name, "source": t.source, "framework": t.framework, "created_at": t.created_at} for t in templates]
+
+@router.get("/competitor-templates/{template_id}")
+async def get_competitor_template(template_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(CompetitorTemplate).where(CompetitorTemplate.id == template_id))
+    t = result.scalar_one_or_none()
+    if not t:
+        raise HTTPException(404, "模板不存在")
+    return {"id": t.id, "name": t.name, "source": t.source, "framework": t.framework, "created_at": t.created_at}
+
+@router.post("/competitor-templates")
+async def create_competitor_template(data: dict = Body(...), db: AsyncSession = Depends(get_db)):
+    t = CompetitorTemplate(
+        name=data.get("name", "未命名模板"),
+        source=data.get("source", ""),
+        framework=data.get("framework", "{}"),
+    )
+    db.add(t)
+    await db.commit()
+    await db.refresh(t)
+    return {"id": t.id, "name": t.name, "created_at": t.created_at}
+
+@router.put("/competitor-templates/{template_id}")
+async def update_competitor_template(template_id: int, data: dict = Body(...), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(CompetitorTemplate).where(CompetitorTemplate.id == template_id))
+    t = result.scalar_one_or_none()
+    if not t:
+        raise HTTPException(404, "模板不存在")
+    if "name" in data: t.name = data["name"]
+    if "source" in data: t.source = data["source"]
+    if "framework" in data: t.framework = data["framework"]
+    await db.commit()
+    return {"ok": True}
+
+@router.delete("/competitor-templates/{template_id}")
+async def delete_competitor_template(template_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(CompetitorTemplate).where(CompetitorTemplate.id == template_id))
+    t = result.scalar_one_or_none()
+    if not t:
+        raise HTTPException(404, "模板不存在")
+    await db.delete(t)
+    await db.commit()
+    return {"ok": True}

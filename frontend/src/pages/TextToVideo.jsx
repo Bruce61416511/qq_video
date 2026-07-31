@@ -41,6 +41,8 @@ export default function TextToVideo() {
   const [videoTopics, setVideoTopics] = useState([])
   const [selectedTopicId, setSelectedTopicId] = useState(null)
   const [selectedTopic, setSelectedTopic] = useState(null)
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null)
+  const [competitorTemplates, setCompetitorTemplates] = useState([])
   const [activeTab, setActiveTab] = useState("video")
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false)
   const [editingFile, setEditingFile] = useState(null)
@@ -56,6 +58,8 @@ export default function TextToVideo() {
     trendsApi.getTopicData().then(data => {
       if (data && data.topics) setVideoTopics(data.topics)
     }).catch(() => {})
+    fetch("http://localhost:8000/api/media/competitor-templates")
+      .then(r => r.json()).then(d => setCompetitorTemplates(Array.isArray(d) ? d : [])).catch(() => {})
   }, [])
 
   // Step state
@@ -113,7 +117,12 @@ export default function TextToVideo() {
     if (selectedTopic) {
       setShotsLoading(true)
       try {
-        const data = await mediaApi.generateShotsFromTopic(selectedTopic)
+        const topicWithTemplate = { ...selectedTopic }
+        if (selectedTemplateId) {
+          const tpl = competitorTemplates.find(t => t.id === selectedTemplateId)
+          if (tpl) topicWithTemplate.competitor_framework = tpl.framework
+        }
+        const data = await mediaApi.generateShotsFromTopic(topicWithTemplate)
         setShots(data.shots || [])
         setCurrent(1)
         message.success(`已生成 ${data.shots.length} 个分镜方案`)
