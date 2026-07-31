@@ -97,6 +97,7 @@ export default function MediaLibrary() {
   }
 
   const readyCount = media.filter(m => m.status === 'ready').length
+  const genCount = media.filter(m => m.status === 'generating').length
 
   const columns = [
     {
@@ -150,6 +151,18 @@ export default function MediaLibrary() {
         </Space>
       </div>
 
+            <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
+        {[ 
+          { label: "总素材", value: media.length, color: "#005d50", bg: "linear-gradient(135deg, #eefcf8, #d4f5ee)" },
+          { label: "就绪", value: readyCount, color: "#17857e", bg: "linear-gradient(135deg, #f0faf7, #c8f0e6)" },
+          { label: "生成中", value: genCount, color: "#1677ff", bg: "linear-gradient(135deg, #e8f0ff, #d4e0ff)" },
+        ].map((card, i) => (
+          <div key={i} style={{ flex: 1, padding: "14px 18px", borderRadius: 12, background: card.bg, border: "1px solid " + card.color + "20" }}>
+            <div style={{ fontSize: 12, color: card.color, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>{card.label}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#142528", marginTop: 2 }}>{card.value}</div>
+          </div>
+        ))}
+      </div>
       <Table
         columns={columns}
         dataSource={media}

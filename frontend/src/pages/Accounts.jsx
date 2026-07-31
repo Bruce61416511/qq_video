@@ -114,6 +114,9 @@ export default function Accounts() {
     catch (e) { message.error(e.message) }
   }
 
+    const onlineCount = accounts.filter(a => a.status === 'online').length
+  const expiredCount = accounts.filter(a => a.status === 'expired').length
+
   const columns = [
     {
       title: '账号', dataIndex: 'name', key: 'name', width: 250,
@@ -157,6 +160,20 @@ export default function Accounts() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div><h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>账号管理</h2><span style={{ fontSize: 13, color: '#8c8c8c' }}>{accounts.length}/{MAX} 个账号</span></div>
         <Button type="primary" icon={<PlusOutlined />} disabled={accounts.length >= MAX} onClick={() => setAddOpen(true)} size="large">添加账号</Button>
+      </div>
+            <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
+        {[ 
+          { label: "总账号", value: accounts.length, sub: "/ " + MAX + " 上限", color: "#005d50", bg: "linear-gradient(135deg, #eefcf8, #d4f5ee)" },
+          { label: "在线", value: onlineCount, sub: "已绑定微信", color: "#17857e", bg: "linear-gradient(135deg, #f0faf7, #d4f5ee)" },
+          { label: "已过期", value: expiredCount, sub: "需重新扫码", color: "#e6a817", bg: "linear-gradient(135deg, #fffdf0, #fff3cd)" },
+          { label: "离线", value: accounts.length - onlineCount - expiredCount, sub: "未扫码绑定", color: "#8c8c8c", bg: "linear-gradient(135deg, #f5f5f5, #e8e8e8)" },
+        ].map((card, i) => (
+          <div key={i} style={{ flex: 1, padding: "14px 18px", borderRadius: 12, background: card.bg, border: "1px solid " + card.color + "20" }}>
+            <div style={{ fontSize: 12, color: card.color, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>{card.label}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#142528", marginTop: 2 }}>{card.value}</div>
+            <div style={{ fontSize: 11, color: "#8c8c8c", marginTop: 1 }}>{card.sub}</div>
+          </div>
+        ))}
       </div>
       <Table columns={columns} dataSource={accounts} rowKey="id" pagination={false} loading={loading} />
       <Modal title="添加账号" open={addOpen} onOk={addAccount} onCancel={() => { setAddOpen(false); setNewName('') }} okText="确认" cancelText="取消">

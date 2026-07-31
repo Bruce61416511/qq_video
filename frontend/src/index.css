@@ -77,3 +77,81 @@ a {
 .ant-modal-content {
   border-radius: 16px !important;
 }
+
+/* Background dot pattern */
+.ant-layout {
+  background-image: radial-gradient(circle, #dce9e7 1px, transparent 1px) !important;
+  background-size: 24px 24px !important;
+}
+
+/* Page title typography */
+.page-title-serif {
+  font-family: "Songti SC", "SimSun", serif;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+/* Route transition */
+.ant-layout-content {
+  animation: fadeSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Empty state */
+.ant-empty-image {
+  opacity: 0.5;
+}
+
+.ant-empty-description {
+  color: #8c8c8c !important;
+}
+
+/* Stat card hover */
+.stat-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 93, 80, 0.08);
+  transition: all 0.2s ease;
+}
+
+/* Select dropdown */
+.ant-select-dropdown {
+  border-radius: 10px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Input focus ring */
+.ant-input:focus, .ant-input-focused {
+  border-color: #005d50 !important;
+  box-shadow: 0 0 0 2px rgba(0, 93, 80, 0.1) !important;
+}
+
+.ant-input-password:focus, .ant-input-password-focused {
+  border-color: #005d50 !important;
+  box-shadow: 0 0 0 2px rgba(0, 93, 80, 0.1) !important;
+}
+
+/* Modal header */
+.ant-modal-header {
+  border-radius: 16px 16px 0 0 !important;
+}
+
+/* Progress bar */
+.ant-progress-bg {
+  background: #005d50 !important;
+}
+
+/* Button default */
+.ant-btn-default:hover {
+  color: #005d50 !important;
+  border-color: #005d50 !important;
+}

@@ -139,6 +139,19 @@ export default function PublishTasks() {
         </Space>
       </div>
 
+            <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
+        {[ 
+          { label: "总记录", value: tasks.length, color: "#005d50", bg: "linear-gradient(135deg, #eefcf8, #d4f5ee)" },
+          { label: "成功", value: successCount, color: "#17857e", bg: "linear-gradient(135deg, #f0faf7, #c8f0e6)" },
+          { label: "失败", value: failCount, color: "#c53030", bg: "linear-gradient(135deg, #fef0f0, #fdd)" },
+          { label: "进行中", value: activeCount, color: "#1677ff", bg: "linear-gradient(135deg, #e8f0ff, #d4e0ff)" },
+        ].map((card, i) => (
+          <div key={i} style={{ flex: 1, padding: "14px 18px", borderRadius: 12, background: card.bg, border: "1px solid " + card.color + "20" }}>
+            <div style={{ fontSize: 12, color: card.color, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>{card.label}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: "#142528", marginTop: 2 }}>{card.value}</div>
+          </div>
+        ))}
+      </div>
       <Table
         columns={columns}
         dataSource={tasks}
