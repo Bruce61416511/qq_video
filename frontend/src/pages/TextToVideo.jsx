@@ -192,15 +192,12 @@ export default function TextToVideo() {
     if (!topic.trim()) { message.warning('请输入视频主题'); return }
     setShotsLoading(true)
     try {
-      let data
+      let competitorFramework = ''
       if (selectedTemplateId) {
         const tpl = competitorTemplates.find(t => t.id === selectedTemplateId)
-        const manualData = { video_topic: topic.trim(), angle: '', hook: topic.trim().substring(0, 30), hook_type: '', content_outline: topic.trim().split(/[\n,，]/).filter(Boolean), target_emotion: '', product_link: '', duration: parseInt(shotDuration) * (parseInt(shotCount) || 3) }
-        if (tpl) manualData.competitor_framework = tpl.framework
-        data = await mediaApi.generateShotsFromTopic(manualData)
-      } else {
-        data = await mediaApi.generateShots(topic.trim(), shotCount, shotDuration)
+        if (tpl) competitorFramework = tpl.framework
       }
+      const data = await mediaApi.generateShots(topic.trim(), shotCount, shotDuration, competitorFramework)
       setShots(data.shots || [])
       setCurrent(1)
       message.success(`已生成 ${data.shots.length} 个分镜方案`)
@@ -630,15 +627,15 @@ export default function TextToVideo() {
                 onClick={async () => {
                   setPreviewLoading(true);
                   try {
-                    const manualData = { video_topic: topic.trim(), angle: '', hook: topic.trim().substring(0, 30), hook_type: '', content_outline: topic.trim().split(/[\n,，]/).filter(Boolean), target_emotion: '', product_link: '', duration: parseInt(shotDuration) * (parseInt(shotCount) || 3) };
+                    let competitorFramework = '';
                     if (selectedTemplateId) {
                       const tpl = competitorTemplates.find(t => t.id === selectedTemplateId);
-                      if (tpl) manualData.competitor_framework = tpl.framework;
+                      if (tpl) competitorFramework = tpl.framework;
                     }
                     const res = await fetch("http://localhost:8000/api/media/generate-shots-preview", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify(manualData),
+                      body: JSON.stringify({ video_topic: topic.trim(), hook: topic.trim().substring(0, 30), content_outline: topic.trim().split(/[\n,，]/).filter(Boolean), duration: parseInt(shotDuration) * (parseInt(shotCount) || 3), hook_type: '', angle: '', target_emotion: '', product_link: '', shot_count: shotCount, shot_duration: shotDuration, competitor_framework: competitorFramework }),
                     });
                     const data = await res.json();
                     setPreviewData(data);

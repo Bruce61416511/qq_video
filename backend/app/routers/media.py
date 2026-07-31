@@ -98,7 +98,7 @@ async def generate_shots_from_topic(data: dict = Body(...)):
 @router.post("/generate-shots-preview")
 async def generate_shots_preview(data: dict = Body(...)):
     """Preview the system prompt and user message sent to LLM, without actual call."""
-    from ..services.llm_service import TOPIC_SHOT_PROMPT, SYSTEM_PROMPT, build_topic_user_message
+    from ..services.llm_service import TOPIC_SHOT_PROMPT, SYSTEM_PROMPT, build_topic_user_message, _parse_competitor_framework
     import json as _json
 
     video_topic = data.get("video_topic", "")
@@ -122,28 +122,39 @@ async def generate_shots_preview(data: dict = Body(...)):
 
     outline_text = "\n".join(f"{i+1}. {o}" for i, o in enumerate(content_outline)) if content_outline else "None"
 
-    # Manual mode (no hook_type + no template) uses SYSTEM_PROMPT; topic mode uses TOPIC_SHOT_PROMPT
-    is_manual = (not hook_type) and (not competitor_framework)
+    # Manual mode (no hook_type) uses SYSTEM_PROMPT; topic mode uses TOPIC_SHOT_PROMPT
+    is_manual = not hook_type
     prompt_template = SYSTEM_PROMPT if is_manual else TOPIC_SHOT_PROMPT
     system_prompt = prompt_template.replace("{hook_dur}", str(hook_dur)).replace("{end_dur}", str(end_dur))
 
-    user_message = build_topic_user_message(
-        video_topic=video_topic,
-        angle=angle,
-        hook=hook,
-        hook_type=hook_type,
-        content_outline=content_outline,
-        target_emotion=target_emotion,
-        product_link=product_link,
-        total_duration=total_duration,
-        hook_dur=hook_dur,
-        mid_dur=mid_dur,
-        end_dur=end_dur,
-        outline_count=outline_count,
-        shot_count=shot_count,
-        outline_text=outline_text,
-        competitor_framework=competitor_framework,
-    )
+    if is_manual:
+        # Manual mode: use frontend shot_count/shot_duration if provided
+        _man_shot_count = data.get("shot_count", shot_count)
+        _man_shot_dur = data.get("shot_duration", str(int(total_duration/shot_count) if shot_count else 5))
+        user_message = f"视频主题：{video_topic}\n分镜数量：{_man_shot_count}个\n每镜时长：{_man_shot_dur}秒"
+        if competitor_framework:
+            parts = _parse_competitor_framework(competitor_framework)
+            if parts:
+                framework_text = "\n".join(parts)
+                user_message += f"\n\n【竞品参考框架】\n{framework_text}\n\n请参考以上竞品框架的风格基调、分镜节奏、景别递进，生成视频分镜方案。"
+    else:
+        user_message = build_topic_user_message(
+            video_topic=video_topic,
+            angle=angle,
+            hook=hook,
+            hook_type=hook_type,
+            content_outline=content_outline,
+            target_emotion=target_emotion,
+            product_link=product_link,
+            total_duration=total_duration,
+            hook_dur=hook_dur,
+            mid_dur=mid_dur,
+            end_dur=end_dur,
+            outline_count=outline_count,
+            shot_count=shot_count,
+            outline_text=outline_text,
+            competitor_framework=competitor_framework,
+        )
 
     return {
         "system_prompt": system_prompt,
@@ -154,14 +165,19 @@ async def generate_shots_preview(data: dict = Body(...)):
     }
 
 @router.post("/generate-shots")
-async def generate_shots(req: GenerateShotsRequest):
+async def generate_shots(data: dict = Body(...)):
     """AI generates shot plan from topic using LLM (with template fallback)."""
     from ..services.llm_service import generate_shot_plan
 
-    count = max(1, min(req.shot_count, 10))
-    dur = req.shot_duration if req.shot_duration in ("3","5","10","15","30") else "5"
+    topic = data.get("topic", "")
+    shot_count = data.get("shot_count", 3)
+    shot_duration = data.get("shot_duration", "5")
+    competitor_framework = data.get("competitor_framework", "")
 
-    shots = await generate_shot_plan(req.topic, count, dur)
+    count = max(1, min(int(shot_count), 10))
+    dur = str(shot_duration) if str(shot_duration) in ("3","5","10","15","30") else "5"
+
+    shots = await generate_shot_plan(topic, count, dur, competitor_framework)
     # Ensure duration is set on each shot
     for s in shots:
         if "duration" not in s:

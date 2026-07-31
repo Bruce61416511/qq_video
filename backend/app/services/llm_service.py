@@ -194,103 +194,80 @@ def build_topic_user_message(
 """
 
     if competitor_framework:
-        try:
-            fw = _json.loads(competitor_framework) if isinstance(competitor_framework, str) else competitor_framework
-            # --- Header: style + tone + narrative_arc ---
-            parts = []
-            style_desc = fw.get("style", "")
-            tone = fw.get("tone", "")
-            arc = fw.get("narrative_arc", "")
-            header = style_desc
-            if tone:
-                header += f" / {tone}"
-            if arc:
-                header += f" / {arc}"
-            if header:
-                parts.append(f"风格基调：{header}")
-            # Target audience
-            ta = fw.get("target_audience", {})
-            if isinstance(ta, dict):
-                ta_parts = []
-                if ta.get("age_range"):
-                    ta_parts.append(ta["age_range"])
-                if ta.get("gender") and ta["gender"] != "不限":
-                    ta_parts.append(ta["gender"])
-                pain_points = ta.get("pain_points", [])
-                if pain_points:
-                    ta_parts.append("痛点：" + "；".join(pain_points[:3]))
-                if ta_parts:
-                    parts.append(f"目标受众：{' / '.join(ta_parts)}")
-            total_dur = fw.get("total_duration", "")
-            if total_dur:
-                parts.append(f"总时长：{total_dur}s")
-
-            # --- Hook visual ---
-            hook = fw.get("hook", {})
-            if isinstance(hook, dict):
-                hook_visual = hook.get("hook_visual", "")
-                if hook_visual:
-                    parts.append(f"钩子画面：{hook_visual}")
-
-            # --- Shots ---
-            shots_ref = fw.get("shots", [])
-            if shots_ref:
-                shot_lines = []
-                for s in shots_ref:
-                    idx = s.get("index", "?")
-                    dur = s.get("duration", "?")
-                    stype = s.get("shot_type", "")
-                    ssize = s.get("shot_size", "")
-                    vdesc = s.get("visual_desc", "")
-                    script = s.get("script", "")
-                    ebeat = s.get("emotion_beat", "")
-                    # Build shot line: size + type + visual + emotion_beat + script
-                    meta = f"{ssize}" if ssize else ""
-                    if stype:
-                        meta = f"{meta} {stype}" if meta else stype
-                    meta_str = f"（{dur}s {meta}）" if meta else f"（{dur}s）"
-                    desc_parts = []
-                    if vdesc:
-                        desc_parts.append(vdesc)
-                    if ebeat:
-                        desc_parts.append(f"[{ebeat}]")
-                    desc_str = " | ".join(desc_parts)
-                    line = f"  - 镜{idx}{meta_str}：{desc_str}"
-                    if script:
-                        line += f" | 配音：{script}"
-                    shot_lines.append(line)
-                parts.append("分镜拆解：\n" + "\n".join(shot_lines))
-
-            # --- CTA ---
-            ts = fw.get("traffic_strategy", {})
-            if isinstance(ts, dict):
-                cta_type = ts.get("cta_type", "")
-                cta_pos = ts.get("cta_placement", "")
-                if cta_type and cta_type != "无":
-                    cta_str = f"CTA：{cta_type}"
-                    if cta_pos:
-                        cta_str += f"（第{cta_pos}镜）"
-                    parts.append(cta_str)
-
-            # --- Replicability ---
-            rep = fw.get("replicability", {})
-            if isinstance(rep, dict):
-                copyable = rep.get("copyable_elements", [])
-                if copyable:
-                    ce_text = "；".join(copyable[:5])  # limit to 5
-                    parts.append(f"可复用要素：{ce_text}")
-                improvements = rep.get("improvement_opportunities", [])
-                if improvements:
-                    imp_text = "；".join(improvements[:3])
-                    parts.append(f"改进空间：{imp_text}")
-
-            if parts:
-                framework_text = "\n".join(parts)
-                user_content += f"""\n\n【竞品参考框架】\n{framework_text}\n\n请参考以上竞品框架的风格基调、分镜节奏、景别递进、情绪曲线、可复用要素及改进空间，生成新选题的分镜方案。"""
-        except:
-            pass
+        parts = _parse_competitor_framework(competitor_framework)
+        if parts:
+            framework_text = "\n".join(parts)
+            user_content += f"""\n\n【竞品参考框架】\n{framework_text}\n\n请参考以上竞品框架的风格基调、分镜节奏、景别递进、情绪曲线、可复用要素及改进空间，生成新选题的分镜方案。"""
 
     return user_content
+
+
+def _parse_competitor_framework(competitor_framework: str) -> list:
+    """Parse competitor framework JSON into a list of text parts for user message."""
+    import json as _json
+    parts = []
+    try:
+        fw = _json.loads(competitor_framework) if isinstance(competitor_framework, str) else competitor_framework
+        style_desc = fw.get("style", "")
+        tone = fw.get("tone", "")
+        arc = fw.get("narrative_arc", "")
+        header = style_desc
+        if tone: header += f" / {tone}"
+        if arc: header += f" / {arc}"
+        if header:
+            parts.append(f"风格基调：{header}")
+        ta = fw.get("target_audience", {})
+        if isinstance(ta, dict):
+            ta_parts = []
+            if ta.get("age_range"): ta_parts.append(ta["age_range"])
+            if ta.get("gender") and ta["gender"] != "不限": ta_parts.append(ta["gender"])
+            pain_points = ta.get("pain_points", [])
+            if pain_points: ta_parts.append("痛点：" + "；".join(pain_points[:3]))
+            if ta_parts: parts.append(f"目标受众：{' / '.join(ta_parts)}")
+        total_dur = fw.get("total_duration", "")
+        if total_dur: parts.append(f"总时长：{total_dur}s")
+        hook = fw.get("hook", {})
+        if isinstance(hook, dict) and hook.get("hook_visual"):
+            parts.append(f"钩子画面：{hook['hook_visual']}")
+        shots_ref = fw.get("shots", [])
+        if shots_ref:
+            shot_lines = []
+            for s in shots_ref:
+                idx = s.get("index", "?")
+                dur = s.get("duration", "?")
+                stype = s.get("shot_type", "")
+                ssize = s.get("shot_size", "")
+                vdesc = s.get("visual_desc", "")
+                script = s.get("script", "")
+                ebeat = s.get("emotion_beat", "")
+                meta = f"{ssize}" if ssize else ""
+                if stype: meta = f"{meta} {stype}" if meta else stype
+                meta_str = f"（{dur}s {meta}）" if meta else f"（{dur}s）"
+                desc_parts = []
+                if vdesc: desc_parts.append(vdesc)
+                if ebeat: desc_parts.append(f"[{ebeat}]")
+                desc_str = " | ".join(desc_parts)
+                line = f"  - 镜{idx}{meta_str}：{desc_str}"
+                if script: line += f" | 配音：{script}"
+                shot_lines.append(line)
+            parts.append("分镜拆解：\n" + "\n".join(shot_lines))
+        ts = fw.get("traffic_strategy", {})
+        if isinstance(ts, dict):
+            cta_type = ts.get("cta_type", "")
+            cta_pos = ts.get("cta_placement", "")
+            if cta_type and cta_type != "无":
+                cta_str = f"CTA：{cta_type}"
+                if cta_pos: cta_str += f"（第{cta_pos}镜）"
+                parts.append(cta_str)
+        rep = fw.get("replicability", {})
+        if isinstance(rep, dict):
+            copyable = rep.get("copyable_elements", [])
+            if copyable: parts.append(f"可复用要素：{'；'.join(copyable[:5])}")
+            improvements = rep.get("improvement_opportunities", [])
+            if improvements: parts.append(f"改进空间：{'；'.join(improvements[:3])}")
+    except:
+        pass
+    return parts
 
 async def generate_shot_plan_from_topic(
     video_topic: str,
@@ -546,7 +523,7 @@ def _get_setting(key: str, default: str = "") -> str:
     except Exception:
         return default
 
-async def generate_shot_plan(topic: str, shot_count: int, shot_duration: str) -> list[dict]:
+async def generate_shot_plan(topic: str, shot_count: int, shot_duration: str, competitor_framework: str = "") -> list[dict]:
     """Call LLM to generate shot plan from topic.
 
     Returns list of {scene_prompt, voice_script, duration}

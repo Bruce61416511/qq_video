@@ -27,9 +27,9 @@ export const mediaApi = {
   list: () => request('/media'),
   delete: (id) => request('/media/' + id, { method: 'DELETE' }),
   generateShotsFromTopic: (topicData) => request('/media/generate-shots-from-topic', { method: 'POST', body: JSON.stringify(topicData) }),
-  generateShots: (topic, shotCount, shotDuration) => request('/media/generate-shots', {
+  generateShots: (topic, shotCount, shotDuration, competitorFramework) => request('/media/generate-shots', {
     method: 'POST',
-    body: JSON.stringify({ topic, shot_count: shotCount, shot_duration: shotDuration }),
+    body: JSON.stringify({ topic, shot_count: shotCount, shot_duration: shotDuration, competitor_framework: competitorFramework || '' }),
   }),
   getShots: (mediaId) => request('/media/' + mediaId + '/shots'),
   generate: (prompt, size, resolution, shots) => request('/media/generate', {
