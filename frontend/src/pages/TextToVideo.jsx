@@ -61,6 +61,21 @@ export default function TextToVideo() {
     fetch("http://localhost:8000/api/media/competitor-templates")
       .then(r => r.json()).then(d => setCompetitorTemplates(Array.isArray(d) ? d : [])).catch(() => {})
   }, [])
+  // 切换路由后恢复分镜状态
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("text_to_video_state")
+      if (saved) {
+        const state = JSON.parse(saved)
+        if (state.shots && state.shots.length) setShots(state.shots)
+        if (state.current != null) setCurrent(state.current)
+        if (state.selectedTopic) setSelectedTopic(state.selectedTopic)
+        if (state.selectedTopicId != null) setSelectedTopicId(state.selectedTopicId)
+        if (state.selectedTemplateId != null) setSelectedTemplateId(state.selectedTemplateId)
+      }
+    } catch (e) {}
+  }, [])
+
 
   // Step state
   const [current, setCurrent] = useState(0)
@@ -77,6 +92,9 @@ export default function TextToVideo() {
     if (idx === undefined || idx === null) {
       setSelectedTopicId(null)
       setSelectedTopic(null)
+      setShots([])
+      setCurrent(0)
+      localStorage.removeItem("text_to_video_state")
       return
     }
     const t = videoTopics[idx]
@@ -93,6 +111,14 @@ export default function TextToVideo() {
   // Step 2 - shots
   const [shots, setShots] = useState([])
   const [shotsLoading, setShotsLoading] = useState(false)
+  // 持久化分镜状态到 localStorage（仅在有数据时保存，防止空状态覆盖）
+  useEffect(() => {
+    if (shots.length > 0 || selectedTopic) {
+      const state = { shots, current, selectedTopic, selectedTopicId, selectedTemplateId }
+      localStorage.setItem("text_to_video_state", JSON.stringify(state))
+    }
+  }, [shots, current, selectedTopic, selectedTopicId, selectedTemplateId])
+
   const [regeneratingIndex, setRegeneratingIndex] = useState(-1)
 
   // Step 3 - generating
