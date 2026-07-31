@@ -430,27 +430,313 @@ async def _download_video(url: str, media_id: int, shot_index: int) -> str:
 async def _create_placeholder_clip(prompt: str, duration: str, size: str) -> str:
     """Create a placeholder video clip (black screen with text) using ffmpeg."""
     try:
-        import subprocess
         output = str(UPLOAD_DIR / f"placeholder_{uuid.uuid4().hex[:8]}.mp4")
-        safe_prompt = prompt[:80].replace(":", "\\:").replace("'", "\\'")
-        size_map = {"9:16": "1080:1920", "16:9": "1920:1080", "1:1": "1080:1080"}
-        res = size_map.get(size, "1080:1920")
+        safe_prompt = prompt[:80].replace(":", "\\:").replace("'", "\\'").replace(",", "\\,")
+        size_map = {"9:16": "1080x1920", "16:9": "1920x1080", "1:1": "1080x1080"}
+        res = size_map.get(size, "1080x1920")
 
         cmd = [
             "ffmpeg", "-y",
             "-f", "lavfi",
-            "-i", f"color=c=0x1a1a2e:s={res}:d={duration},drawtext=fontfile='C\\\\:/Windows/Fonts/simhei.ttf':text='{safe_prompt}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2",
+            "-i", f"color=color=0x1a1a2e:size={res}:rate=24:duration={duration},drawtext=text='{safe_prompt}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2",
             "-c:v", "libx264", "-preset", "ultrafast",
             "-movflags", "+faststart",
             output,
         ]
-        subprocess.run(cmd, capture_output=True, encoding="utf-8", errors="replace", timeout=30)
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            await asyncio.wait_for(proc.communicate(), timeout=30)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
         if os.path.exists(output):
             return output
     except Exception as e:
         print(f"[Pipeline] placeholder error: {e}")
     return ""
 
+
+# ====== 逐镜生成（4步流程） ======
+
+@router.post("/save-shots")
+async def save_shots(data: dict = Body(...), db: AsyncSession = Depends(get_db)):
+    """Create Media + MediaShots records without starting pipeline.
+    Returns media_id for subsequent per-shot generation.
+    """
+    prompt = data.get("prompt", "")
+    size = data.get("size", "9:16")
+    resolution = data.get("resolution", "1080P")
+    shots_data = data.get("shots", [])
+
+    prompt_short = prompt[:30] if len(prompt) > 30 else prompt
+    filename = f"ai_{uuid.uuid4().hex}.mp4"
+    total_dur = sum(int(s.get("duration", 5)) for s in shots_data)
+
+    media = Media(
+        name=f"{prompt_short}.mp4",
+        filepath=str(UPLOAD_DIR / filename),
+        size="-",
+        duration=f"{total_dur}s" if total_dur else "-",
+        status=MediaStatus.generating,
+        source="ai",
+        prompt=prompt,
+        video_size=size,
+        video_duration=str(total_dur) + 's' if total_dur else '-',
+        video_resolution=resolution,
+    )
+    db.add(media)
+    await db.commit()
+    await db.refresh(media)
+
+    for i, shot in enumerate(shots_data):
+        ms = MediaShot(
+            media_id=media.id,
+            shot_index=i + 1,
+            scene_prompt=shot.get("scene_prompt", ""),
+            voice_script=shot.get("voice_script", ""),
+            duration=str(shot.get("duration", 5)),
+            status="pending",
+        )
+        db.add(ms)
+    await db.commit()
+
+    return {"media_id": media.id, "shot_count": len(shots_data)}
+
+@router.post("/test-generate")
+async def test_generate():
+    """Minimal test: just create placeholder clip."""
+    import uuid
+    output = str(UPLOAD_DIR / f"test_{uuid.uuid4().hex[:8]}.mp4")
+    safe = "test prompt"
+    res = "1080x1920"
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi",
+        "-i", f"color=color=0x1a1a2e:size={res}:rate=24:duration=5,drawtext=text='{safe}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2",
+        "-c:v", "libx264", "-preset", "ultrafast",
+        "-movflags", "+faststart",
+        output,
+    ]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        await asyncio.wait_for(proc.communicate(), timeout=30)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+    import os
+    return {"ok": os.path.exists(output), "path": output}
+
+
+
+
+@router.post("/{media_id}/shots/{shot_index}/generate")
+async def generate_single_shot(media_id: int, shot_index: int):
+    """Generate video + audio for a single shot. Uses real API if key configured, mock otherwise."""
+    from ..services.video_gen_service import generate_video_clip
+    from ..services.tts_service import generate_voice
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(MediaShot).where(
+                MediaShot.media_id == media_id,
+                MediaShot.shot_index == shot_index,
+            )
+        )
+        shot = result.scalar_one_or_none()
+        if not shot:
+            raise HTTPException(404, f"Shot {shot_index} not found for media {media_id}")
+        scene_prompt = shot.scene_prompt
+        voice_script = shot.voice_script
+        duration = shot.duration
+        media_result = await db.execute(select(Media).where(Media.id == media_id))
+        media = media_result.scalar_one_or_none()
+        size = media.video_size if media else "9:16"
+
+    # TTS: uses edge-tts (free, no key needed)
+    audio_path = ""
+    if voice_script and voice_script.strip():
+        try:
+            audio_path = await generate_voice(voice_script)
+        except Exception as e:
+            print(f"[ShotGen] TTS error for shot {shot_index}: {e}")
+
+    # Video: try real API, fallback to mock placeholder
+    video_result = await generate_video_clip(
+        prompt=scene_prompt,
+        duration=duration,
+        size=size,
+    )
+    clip_path = ""
+    if isinstance(video_result, dict):
+        if video_result.get("status") == "done" and video_result.get("url"):
+            clip_path = await _download_video(video_result["url"], media_id, shot_index)
+        else:
+            clip_path = await _create_placeholder_clip(scene_prompt, duration, size)
+    else:
+        clip_path = str(video_result) if video_result else ""
+
+    status = "done" if clip_path and os.path.exists(clip_path) else "failed"
+    await _update_shot(media_id, shot_index, status=status, clip_path=clip_path, audio_path=audio_path)
+
+    return {
+        "shot_index": shot_index,
+        "status": status,
+        "video_path": clip_path,
+        "audio_path": audio_path,
+    }
+
+@router.post("/{media_id}/regenerate-shot-video")
+async def regenerate_shot_video(media_id: int, data: dict = Body(...)):
+    """Regenerate video for a single shot with updated prompt."""
+    from ..services.video_gen_service import generate_video_clip
+
+    shot_index = data.get("shot_index")
+    scene_prompt = data.get("scene_prompt", "")
+
+    # Get media for size/resolution
+    async with async_session() as db:
+        media_result = await db.execute(select(Media).where(Media.id == media_id))
+        media = media_result.scalar_one_or_none()
+        size = media.video_size if media else "9:16"
+        resolution = media.video_resolution if media else "1080P"
+        duration = "5"
+
+        # Update shot prompt in DB
+        shot_result = await db.execute(
+            select(MediaShot).where(
+                MediaShot.media_id == media_id,
+                MediaShot.shot_index == shot_index,
+            )
+        )
+        shot = shot_result.scalar_one_or_none()
+        if shot:
+            shot.scene_prompt = scene_prompt
+            duration = shot.duration
+            await db.commit()
+
+    await _update_shot_status(media_id, shot_index, "video")
+    try:
+        video_result = await generate_video_clip(
+            prompt=scene_prompt,
+            duration=duration,
+            size=size,
+            resolution=resolution,
+        )
+    except Exception as e:
+        video_result = {"status": "error", "message": str(e)}
+
+    print(f"[ShotGen] shot {shot_index}: video_result={video_result.get('status') if isinstance(video_result, dict) else type(video_result)}", flush=True)
+    clip_path = ""
+    if isinstance(video_result, dict):
+        if video_result.get("status") == "done" and video_result.get("url"):
+            await _update_shot_status(media_id, shot_index, "downloading")
+            clip_path = await _download_video(video_result["url"], media_id, shot_index)
+        else:
+            clip_path = await _create_placeholder_clip(scene_prompt, duration, size)
+    else:
+        clip_path = str(video_result) if video_result else ""
+
+    status = "done" if clip_path and os.path.exists(clip_path) else "failed"
+    await _update_shot(media_id, shot_index, status=status, clip_path=clip_path)
+
+    return {"shot_index": shot_index, "status": status, "video_path": clip_path}
+
+
+@router.post("/{media_id}/regenerate-shot-audio")
+async def regenerate_shot_audio(media_id: int, data: dict = Body(...)):
+    """Regenerate audio for a single shot with updated voice script."""
+    from ..services.tts_service import generate_voice
+
+    shot_index = data.get("shot_index")
+    voice_script = data.get("voice_script", "")
+
+    # Update shot in DB
+    async with async_session() as db:
+        shot_result = await db.execute(
+            select(MediaShot).where(
+                MediaShot.media_id == media_id,
+                MediaShot.shot_index == shot_index,
+            )
+        )
+        shot = shot_result.scalar_one_or_none()
+        if shot:
+            shot.voice_script = voice_script
+            await db.commit()
+
+    await _update_shot_status(media_id, shot_index, "tts")
+    audio_path = ""
+    if voice_script and voice_script.strip():
+        try:
+            audio_path = await generate_voice(voice_script)
+        except Exception as e:
+            print(f"[ShotGen] TTS error: {e}")
+            audio_path = str(UPLOAD_DIR / f"tts_fallback_{uuid.uuid4().hex[:8]}.mp3")
+
+    status = "done" if audio_path and os.path.exists(audio_path) else "failed"
+    await _update_shot(media_id, shot_index, audio_path=audio_path)
+    # Restore status to done after TTS update
+    async with async_session() as db:
+        result = await db.execute(
+            select(MediaShot).where(
+                MediaShot.media_id == media_id,
+                MediaShot.shot_index == shot_index,
+            )
+        )
+        s = result.scalar_one_or_none()
+        if s and s.clip_path and os.path.exists(s.clip_path):
+            await _update_shot(media_id, shot_index, status="done")
+        elif audio_path:
+            await _update_shot(media_id, shot_index, status="audio_ready")
+
+    return {"shot_index": shot_index, "status": status, "audio_path": audio_path}
+
+
+@router.post("/{media_id}/compose")
+async def compose_media(media_id: int, db: AsyncSession = Depends(get_db)):
+    """Compose all generated shots into final video."""
+    from ..services.video_composer import compose_video
+
+    # Get all shots
+    result = await db.execute(
+        select(MediaShot).where(MediaShot.media_id == media_id).order_by(MediaShot.shot_index)
+    )
+    shots = result.scalars().all()
+
+    media_result = await db.execute(select(Media).where(Media.id == media_id))
+    media = media_result.scalar_one_or_none()
+    if not media:
+        raise HTTPException(404, "Media not found")
+
+    clips = []
+    for shot in shots:
+        clips.append({
+            "video_path": shot.clip_path or "",
+            "audio_path": shot.audio_path or "",
+            "subtitle": shot.voice_script or "",
+            "duration": int(shot.duration) if shot.duration else 5,
+        })
+
+    valid_clips = [c for c in clips if c.get("video_path") and os.path.exists(c.get("video_path", ""))]
+    if not valid_clips:
+        raise HTTPException(400, "没有已完成的分镜视频")
+
+    output_path = str(UPLOAD_DIR / f"ai_{uuid.uuid4().hex}.mp4")
+    comp_result = await compose_video(valid_clips, output_path, media.video_size or "9:16", media.video_resolution or "1080P")
+
+    if comp_result.get("ok"):
+        await _update_media(media_id, filepath=comp_result["path"], duration=f"{comp_result['duration']}s", status=MediaStatus.ready)
+        return {"status": "ready", "path": comp_result["path"], "duration": comp_result["duration"]}
+    else:
+        await _update_media(media_id, status=MediaStatus.failed, duration=comp_result.get("error", ""))
+        raise HTTPException(500, comp_result.get("error", "合成失败"))
 
 
 # ====== 竞品视频拆解（上传视频） ======

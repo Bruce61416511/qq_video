@@ -36,6 +36,11 @@ export const mediaApi = {
     method: 'POST',
     body: JSON.stringify({ prompt, size, resolution, shots }),
   }),
+  saveShots: (data) => request('/media/save-shots', { method: 'POST', body: JSON.stringify(data) }),
+  generateShot: (mediaId, shotIndex) => request('/media/' + mediaId + '/shots/' + shotIndex + '/generate', { method: 'POST' }),
+  regenerateShotVideo: (mediaId, data) => request('/media/' + mediaId + '/regenerate-shot-video', { method: 'POST', body: JSON.stringify(data) }),
+  regenerateShotAudio: (mediaId, data) => request('/media/' + mediaId + '/regenerate-shot-audio', { method: 'POST', body: JSON.stringify(data) }),
+  compose: (mediaId) => request('/media/' + mediaId + '/compose', { method: 'POST' }),
   upload: async (file) => {
     const formData = new FormData()
     formData.append('file', file)

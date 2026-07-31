@@ -57,6 +57,10 @@ export default function TextToVideo() {
     { key: "manual_topic_prompt", filename: "manual_topic_prompt.txt", description: "手动拆镜提示词", exists: true },
   ])
   const [collapsed, setCollapsed] = useState({})
+  const [mediaId, setMediaId] = useState(null)
+  const [shotProgress, setShotProgress] = useState({})
+  const [composing, setComposing] = useState(false)
+  const [compositionResult, setCompositionResult] = useState(null)
 
   // Load video topics on mount
   useEffect(() => {
@@ -85,6 +89,7 @@ export default function TextToVideo() {
         if (state.selectedTopic) setSelectedTopic(state.selectedTopic)
         if (state.selectedTopicId != null) setSelectedTopicId(state.selectedTopicId)
         if (state.selectedTemplateId != null) setSelectedTemplateId(state.selectedTemplateId)
+        if (state.mediaId != null) setMediaId(state.mediaId)
       }
     } catch (e) {}
   }, [])
@@ -121,7 +126,11 @@ export default function TextToVideo() {
       setSelectedTopic(null)
       setShots([])
       setCurrent(0)
-      localStorage.removeItem("text_to_video_state")
+      setMediaId(null)
+    setShotProgress({})
+    setComposing(false)
+    setCompositionResult(null)
+    localStorage.removeItem("text_to_video_state")
       return
     }
     const t = videoTopics[idx]
@@ -144,7 +153,7 @@ export default function TextToVideo() {
   // 持久化分镜状态到 localStorage（仅在有数据时保存，防止空状态覆盖）
   useEffect(() => {
     if (shots.length > 0 || selectedTopic) {
-      const state = { shots, current, selectedTopic, selectedTopicId, selectedTemplateId }
+      const state = { shots, current, selectedTopic, selectedTopicId, selectedTemplateId, mediaId }
       localStorage.setItem("text_to_video_state", JSON.stringify(state))
     }
   }, [shots, current, selectedTopic, selectedTopicId, selectedTemplateId])
@@ -271,7 +280,111 @@ export default function TextToVideo() {
     setShotStatuses([])
     setGenerating(false)
     setPolling(false)
+    setMediaId(null)
+    setShotProgress({})
+    setComposing(false)
+    setCompositionResult(null)
     localStorage.removeItem("text_to_video_state")
+  }
+
+  // Save shots and create media record (step 1 -> step 2)
+  const handleSaveShots = async () => {
+    const prompt = selectedTopic?.video_topic || topic || '未命名视频'
+    try {
+      const res = await fetch("http://localhost:8000/api/media/save-shots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt, size, resolution,
+          shots: shots.map(s => ({
+            scene_prompt: s.scene_prompt || '',
+            voice_script: s.voice_script || '',
+            duration: s.duration || shotDuration,
+          })),
+        }),
+      })
+      const data = await res.json()
+      setMediaId(data.media_id)
+      setCurrent(2)
+      setTimeout(() => generateAllShots(data.media_id), 500)
+    } catch (e) {
+      message.error('保存失败: ' + e.message)
+    }
+  }
+
+  const generateAllShots = async (mid) => {
+    const id = mid || mediaId
+    if (!id) return
+    for (let i = 0; i < shots.length; i++) {
+      const idx = i + 1
+      setShotProgress(p => ({ ...p, [idx]: { status: 'generating' } }))
+      try {
+        const res = await fetch('http://localhost:8000/api/media/' + id + '/shots/' + idx + '/generate', { method: 'POST' })
+        const data = await res.json()
+        setShotProgress(p => ({ ...p, [idx]: { status: data.status, video_path: data.video_path, audio_path: data.audio_path } }))
+      } catch (e) {
+        setShotProgress(p => ({ ...p, [idx]: { status: 'failed', error: e.message } }))
+      }
+    }
+  }
+
+  const regenerateSingleVideo = async (shotIndex, newPrompt) => {
+    if (!mediaId) return
+    setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'generating' } }))
+    try {
+      const res = await fetch('http://localhost:8000/api/media/' + mediaId + '/regenerate-shot-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shot_index: shotIndex, scene_prompt: newPrompt }),
+      })
+      const data = await res.json()
+      setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: data.status, video_path: data.video_path } }))
+      message.success('分镜 ' + shotIndex + ' 视频已重新生成')
+    } catch (e) {
+      setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'failed' } }))
+      message.error('重新生成失败')
+    }
+  }
+
+  const regenerateSingleAudio = async (shotIndex, newScript) => {
+    if (!mediaId) return
+    setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'generating' } }))
+    try {
+      const res = await fetch('http://localhost:8000/api/media/' + mediaId + '/regenerate-shot-audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shot_index: shotIndex, voice_script: newScript }),
+      })
+      const data = await res.json()
+      setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], audio_path: data.audio_path } }))
+      const sp = await fetch('http://localhost:8000/api/media/' + mediaId + '/shots').then(r => r.json())
+      const thisShot = sp.find(s => s.shot_index === shotIndex)
+      if (thisShot && thisShot.clip_path) {
+        setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'done' } }))
+      } else {
+        setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'audio_ready' } }))
+      }
+      message.success('分镜 ' + shotIndex + ' 语音已重新生成')
+    } catch (e) {
+      setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'failed' } }))
+      message.error('重新生成失败')
+    }
+  }
+
+  const handleCompose = async () => {
+    if (!mediaId) return
+    setComposing(true)
+    setCurrent(3)
+    try {
+      const res = await fetch('http://localhost:8000/api/media/' + mediaId + '/compose', { method: 'POST' })
+      const data = await res.json()
+      setCompositionResult(data)
+      setResultMedia({ id: mediaId, name: 'composed.mp4', status: 'ready' })
+      message.success('视频合成完成！')
+    } catch (e) {
+      message.error('合成失败: ' + e.message)
+      setComposing(false)
+    }
   }
 
   // ---------- Step 1: Input ----------
@@ -907,11 +1020,9 @@ export default function TextToVideo() {
       ))}
       <Divider />
       <div style={{ textAlign: 'right' }}>
-        <Popconfirm title="确认提交？将开始生成视频" onConfirm={handleSubmitGenerate}>
-          <Button type="primary" size="large" icon={<ArrowRightOutlined />}>
-            确认并生成视频
+        <Button type="primary" size="large" icon={<ArrowRightOutlined />} onClick={handleSaveShots}>
+            下一步：逐镜生成
           </Button>
-        </Popconfirm>
       </div>
     </Card>
     </>
@@ -950,84 +1061,141 @@ export default function TextToVideo() {
   const shotTotal = shotStatuses.length || shots.length
   const mediaReady = resultMedia?.status === 'ready'
 
-  // ---------- Step 3: Result ----------
-  const renderStep3 = () => (
-    <Card>
-      {generating ? (
-        <div style={{ textAlign: 'center', padding: 40 }}>
-          <LoadingOutlined style={{ fontSize: 48, color: '#005d50' }} />
-          <p style={{ marginTop: 16, fontSize: 15, color: '#8c8c8c' }}>正在提交任务...</p>
-        </div>
-      ) : (
-        <div>
-          <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            {mediaReady ? (
-              <CheckCircleOutlined style={{ fontSize: 48, color: '#52c41a' }} />
-            ) : (
-              <LoadingOutlined style={{ fontSize: 48, color: '#005d50' }} />
+  // ---------- Step 3: Per-shot Video & Audio Generation ----------
+  const renderStep3 = () => {
+    const allDone = shots.length > 0 && shots.every((_, i) => {
+      const p = shotProgress[i + 1]
+      return p && p.status === 'done'
+    })
+    const statusLabel = (s) => {
+      if (!s) return { text: '等待中', color: 'default' }
+      switch (s.status) {
+        case 'generating': return { text: '生成中...', color: 'processing' }
+        case 'done': return { text: '已完成', color: 'success' }
+        case 'failed': return { text: '失败', color: 'error' }
+        case 'audio_ready': return { text: '语音就绪', color: 'warning' }
+        default: return { text: s.status, color: 'default' }
+      }
+    }
+    return (
+      <Card title={<span><VideoCameraOutlined style={{ marginRight: 6 }} />逐镜生成</span>}
+        extra={
+          <Space>
+            <Button size="small" onClick={() => { setCurrent(1) }} icon={<ArrowLeftOutlined />}>返回编辑</Button>
+            {allDone && (
+              <Button type="primary" size="small" icon={<ArrowRightOutlined />} onClick={handleCompose}>
+                合成视频
+              </Button>
             )}
-            <h3 style={{ marginTop: 8 }}>
-              {mediaReady ? '视频生成完成！' : '视频生成中...'}
-            </h3>
-            <Progress
-              percent={shotTotal > 0 ? Math.round((shotDone / shotTotal) * 100) : 0}
-              status={mediaReady ? 'success' : 'active'}
-              format={() => `${shotDone}/${shotTotal} 分镜`}
-              style={{ maxWidth: 300, margin: '0 auto' }}
-            />
-          </div>
-
-          <Timeline
-            items={shotStatuses.map((s, i) => {
-              const statusColors = {
-                pending: 'gray', tts: 'purple', video: 'blue',
-                downloading: 'cyan', done: 'green', failed: 'red',
-              }
-              const statusLabels = {
-                pending: '排队中', tts: '配音中', video: '生成画面',
-                downloading: '下载中', done: '已完成', failed: '失败',
-              }
-              return {
-                color: statusColors[s.status] || 'gray',
-                children: (
-                  <div>
-                    <strong>分镜 {s.shot_index}</strong>
-                    <Tag color={statusColors[s.status]} style={{ marginLeft: 8 }}>
-                      {statusLabels[s.status] || s.status}
-                    </Tag>
-                    <span style={{ fontSize: 12, color: '#8c8c8c', marginLeft: 8 }}>{s.duration}秒</span>
-                    {s.status === 'video' && s.progress > 0 && (
-                      <Progress percent={s.progress} size="small" style={{ marginTop: 4 }} />
-                    )}
-                    <p style={{ margin: '4px 0 0', fontSize: 12, color: '#8c8c8c' }}>
-                      画面: {s.scene_prompt?.substring(0, 40)}...
-                    </p>
-                  </div>
-                ),
-              }
-            })}
-          />
-
-          {mediaReady && (
-            <>
-              <Divider />
-              <div style={{ textAlign: 'center' }}>
-                <p><strong>文件名：</strong>{resultMedia.name}</p>
-                <Space>
-                  <Button type="primary" icon={<VideoCameraOutlined />} onClick={() => navigate('/media')}>
-                    前往素材库查看
-                  </Button>
-                  <Button onClick={resetAll}>继续创作</Button>
+          </Space>
+        }>
+        {shots.map((shot, idx) => {
+          const si = idx + 1
+          const prog = shotProgress[si]
+          const st = statusLabel(prog)
+          return (
+            <div key={idx} style={{
+              marginBottom: 16, padding: 16, borderRadius: 8,
+              border: '1px solid #e8e8e8', background: '#fafafa',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Tag color="blue">分镜 {si}</Tag>
+                <Space size={4}>
+                  <Tag color={st.color}>{st.text}</Tag>
+                  <Tag>{shot.duration || shotDuration}秒</Tag>
                 </Space>
               </div>
-            </>
+              
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 12, color: '#666', marginBottom: 4 }}>
+                  画面提示词
+                  <Button size="small" type="link" style={{ marginLeft: 8, padding: 0, height: 20 }}
+                    loading={prog?.status === 'generating'}
+                    onClick={() => regenerateSingleVideo(si, shot.scene_prompt)}>
+                    <ReloadOutlined /> {prog?.video_path ? '重新生成视频' : '生成视频'}
+                  </Button>
+                </div>
+                <TextArea value={shot.scene_prompt || ''} rows={2}
+                  onChange={e => updateShot(idx, 'scene_prompt', e.target.value)}
+                  style={{ fontFamily: 'monospace', fontSize: 12 }} />
+              </div>
+
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 12, color: '#666', marginBottom: 4 }}>
+                  配音文案
+                  <Button size="small" type="link" style={{ marginLeft: 8, padding: 0, height: 20 }}
+                    loading={prog?.status === 'generating'}
+                    onClick={() => regenerateSingleAudio(si, shot.voice_script)}>
+                    <ReloadOutlined /> {prog?.audio_path ? '重新生成语音' : '生成语音'}
+                  </Button>
+                </div>
+                <TextArea value={shot.voice_script || ''} rows={2}
+                  onChange={e => updateShot(idx, 'voice_script', e.target.value)}
+                  style={{ fontFamily: 'monospace', fontSize: 12 }} />
+              </div>
+
+              {prog?.video_path && (
+                <div style={{ marginTop: 8 }}>
+                  <span style={{ fontSize: 11, color: '#888' }}>视频预览：</span>
+                  <video src={'http://localhost:8000/uploads/' + prog.video_path.split('\\').pop().split('/').pop()} 
+                    controls style={{ width: '100%', maxHeight: 200, borderRadius: 4, marginTop: 4 }} />
+                </div>
+              )}
+              <div style={{ marginTop: 4 }}>
+                  <span style={{ fontSize: 11, color: '#888' }}>语音预览：</span>
+                  {prog?.audio_path ? (
+                    <audio src={'http://localhost:8000/uploads/' + prog.audio_path.split('\\').pop().split('/').pop()} 
+                      controls style={{ width: '100%', marginTop: 4 }} />
+                  ) : (
+                    <span style={{ fontSize: 11, color: '#bbb' }}>{prog?.status === 'generating' ? '生成中...' : '等待生成'}</span>
+                  )}
+                </div>
+            </div>
+          )
+        })}
+        {shots.length === 0 && (
+          <div style={{ textAlign: 'center', padding: 40, color: '#8c8c8c' }}>暂无分镜数据</div>
+        )}
+      </Card>
+    )
+  }
+
+  // ---------- Step 4: Compose ----------
+  const renderStep4 = () => (
+    <Card>
+      {composing ? (
+        <div style={{ textAlign: 'center', padding: 40 }}>
+          <LoadingOutlined style={{ fontSize: 48, color: '#005d50' }} />
+          <p style={{ marginTop: 16, fontSize: 15, color: '#8c8c8c' }}>正在合成视频...</p>
+        </div>
+      ) : compositionResult ? (
+        <div style={{ textAlign: 'center', padding: 40 }}>
+          <CheckCircleOutlined style={{ fontSize: 48, color: '#52c41a' }} />
+          <h3 style={{ marginTop: 8 }}>视频合成完成！</h3>
+          <p style={{ color: '#8c8c8c' }}>时长：{compositionResult.duration || '?'}s</p>
+          {compositionResult.path && (
+            <video src={'http://localhost:8000/uploads/' + compositionResult.path.split('\\').pop().split('/').pop()} 
+              controls style={{ width: '100%', maxHeight: 400, borderRadius: 8, marginTop: 16 }} />
           )}
+          <div style={{ marginTop: 16 }}>
+            <Space>
+              <Button type="primary" icon={<VideoCameraOutlined />} onClick={() => navigate('/media')}>
+                前往素材库查看
+              </Button>
+              <Button onClick={resetAll}>继续创作</Button>
+            </Space>
+          </div>
+        </div>
+      ) : (
+        <div style={{ textAlign: 'center', padding: 40 }}>
+          <LoadingOutlined style={{ fontSize: 48, color: '#005d50' }} />
+          <p style={{ marginTop: 16, fontSize: 15, color: '#8c8c8c' }}>视频生成完成，准备合成</p>
         </div>
       )}
     </Card>
   )
 
-  const { Text } = Typography
+    const { Text } = Typography
 
   const tabItems = [
     {
@@ -1055,13 +1223,15 @@ export default function TextToVideo() {
         items={[
           { title: '输入主题', icon: <EditOutlined /> },
           { title: '编辑分镜', icon: <VideoCameraOutlined /> },
-          { title: '生成视频', icon: <CheckCircleOutlined /> },
+          { title: '逐镜生成', icon: <ThunderboltOutlined /> },
+          { title: '合成视频', icon: <CheckCircleOutlined /> },
         ]}
       />
 
       {current === 0 && renderStep1()}
       {current === 1 && renderStep2()}
       {current === 2 && renderStep3()}
+      {current === 3 && renderStep4()}
 
       {current === 0 && (
         <Card size="small" style={{ marginTop: 20 }}>
