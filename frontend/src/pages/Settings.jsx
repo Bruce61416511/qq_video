@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Card, Input, Button, Select, App, Space, Tag, Divider } from 'antd'
 import {
-  SaveOutlined, RobotOutlined, SoundOutlined, VideoCameraOutlined,
+  SaveOutlined, EditOutlined, RobotOutlined, SoundOutlined, VideoCameraOutlined,
   CheckCircleOutlined, ExclamationCircleOutlined
 } from '@ant-design/icons'
 import { settingsApi } from '../services/api'
@@ -107,7 +107,7 @@ const VIDEO_OPTIONS = [
   { value: 'cogvideo', label: 'CogVideo (开源/免费)' },
 ]
 
-function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, serviceOptions, config, setConfig, hasSecret }) {
+function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, serviceOptions, config, setConfig, hasSecret, locked }) {
   return (
     <Card style={{ marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
@@ -121,7 +121,7 @@ function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, service
       <div style={{ marginBottom: 14 }}>
         <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>服务商</span>
         <Select
-          style={{ width: '100%' }}
+          style={{ width: '100%' }} disabled={locked}
           value={config[serviceKey]?.value || undefined}
           placeholder="选择服务商"
           onChange={v => setConfig(prev => ({ ...prev, [serviceKey]: { ...prev[serviceKey], value: v } }))}
@@ -133,7 +133,7 @@ function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, service
         <div style={{ marginBottom: 14 }}>
           <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>模型</span>
           <Select
-            style={{ width: '100%' }}
+            style={{ width: '100%' }} disabled={locked}
             value={config[serviceKey.replace('_service', '_model')]?.value || undefined}
             placeholder="选择模型"
             onChange={v => setConfig(prev => ({ ...prev, [serviceKey.replace('_service', '_model')]: { ...prev[serviceKey.replace('_service', '_model')], value: v } }))}
@@ -150,7 +150,7 @@ function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, service
         <div style={{ marginBottom: 14 }}>
           <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>音色</span>
           <Select
-            style={{ width: '100%' }}
+            style={{ width: '100%' }} disabled={locked}
             value={config['tts_voice']?.value || undefined}
             placeholder="选择音色"
             onChange={v => setConfig(prev => ({ ...prev, tts_voice: { ...prev['tts_voice'], value: v } }))}
@@ -163,6 +163,7 @@ function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, service
         <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>API Key</span>
         <Input.Password
           placeholder="输入 API Key"
+          disabled={locked}
           value={config[keyKey]?.value || ''}
           onChange={e => setConfig(prev => ({ ...prev, [keyKey]: { ...prev[keyKey], value: e.target.value } }))}
         />
@@ -175,6 +176,7 @@ function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, service
           </span>
           <Input.Password
             placeholder="输入 API Secret"
+            disabled={locked}
             value={config[secretKey]?.value || ''}
             onChange={e => setConfig(prev => ({ ...prev, [secretKey]: { ...prev[secretKey], value: e.target.value } }))}
           />
@@ -187,6 +189,7 @@ function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, service
 export default function Settings() {
   const [saving, setSaving] = useState(false)
   const [config, setConfig] = useState({})
+  const [locked, setLocked] = useState(true)
   const { message } = App.useApp()
 
   useEffect(() => { loadSettings() }, [])
@@ -264,6 +267,7 @@ export default function Settings() {
         config={config}
         setConfig={setConfig}
         hasSecret={false}
+        locked={locked}
       />
 
       <ServiceCard
@@ -277,6 +281,7 @@ export default function Settings() {
         config={config}
         setConfig={setConfig}
         hasSecret={false}
+        locked={locked}
       />
 
       <ServiceCard
@@ -290,18 +295,40 @@ export default function Settings() {
         config={config}
         setConfig={setConfig}
         hasSecret
+        locked={locked}
       />
 
-      <Button
-        type="primary"
-        size="large"
-        icon={<SaveOutlined />}
-        onClick={handleSave}
-        loading={saving}
-        block
-      >
-        保存设置
-      </Button>
+      {locked ? (
+        <Button
+          type="primary"
+          size="large"
+          icon={<EditOutlined />}
+          onClick={() => setLocked(false)}
+          block
+        >
+          编辑设置
+        </Button>
+      ) : (
+        <div style={{ display: "flex", gap: 12 }}>
+          <Button
+            size="large"
+            onClick={() => { setLocked(true); loadSettings() }}
+            block
+          >
+            取消
+          </Button>
+          <Button
+            type="primary"
+            size="large"
+            icon={<SaveOutlined />}
+            onClick={async () => { await handleSave(); setLocked(true) }}
+            loading={saving}
+            block
+          >
+            保存设置
+          </Button>
+        </div>
+      )}
 
       <Card size="small" style={{ marginTop: 20 }}>
         <span style={{ fontWeight: 600, fontSize: 13 }}>配置状态</span>

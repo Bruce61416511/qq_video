@@ -180,7 +180,7 @@ export default function TrendBoard() {
             </Space>
           </div>
           <iframe key={reportKey} src={trendsApi.getReport()}
-            style={{ flex: 1, width: "100%", border: "1px solid #e8e8e8", borderRadius: 8, background: "#fff" }}
+            style={{ flex: 1, width: "100%", border: "1px solid #dce9e7", borderRadius: 12, background: "#fff" }}
             title="TrendRadar 报告" />
         </div>
       ),
@@ -197,7 +197,7 @@ export default function TrendBoard() {
             </Space>
           </div>
           <iframe key={topicKey} src={trendsApi.getTopicReport()}
-            style={{ flex: 1, width: "100%", border: "1px solid #e8e8e8", borderRadius: 8, background: "#fff" }}
+            style={{ flex: 1, width: "100%", border: "1px solid #dce9e7", borderRadius: 12, background: "#fff" }}
             title="视频选题" />
         </div>
       ),

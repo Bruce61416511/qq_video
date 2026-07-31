@@ -1,4 +1,4 @@
-import { useRef } from "react"
+﻿import { useRef, useState } from "react"
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom"
 import { Layout, Menu, ConfigProvider, theme } from "antd"
 import {
@@ -48,11 +48,12 @@ export default function App() {
   const location = useLocation()
   const { token: t } = theme.useToken()
   const contentRef = useRef(null)
+  const [collapsed, setCollapsed] = useState(false)
 
   return (
     <ConfigProvider theme={brandTheme}>
       <Layout style={{ minHeight: "100vh" }}>
-        <Sider width={230} style={{
+        <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} width={230} collapsedWidth={64} trigger={null} style={{
           background: "linear-gradient(180deg, #00473f 0%, #005d50 40%, #006d60 100%)",
           borderRight: "none",
         }}>
@@ -93,13 +94,29 @@ export default function App() {
 
           <div style={{
             position: "absolute", bottom: 0, width: "100%",
-            padding: "14px 20px",
-            borderTop: "1px solid rgba(255,255,255,0.06)",
-            background: "rgba(0,0,0,0.1)",
-            backdropFilter: "blur(8px)",
-            color: "rgba(255,255,255,0.35)", fontSize: 12,
           }}>
-            账号上限 10 个
+            <button
+              onClick={() => setCollapsed(!collapsed)}
+              style={{
+                width: "100%", height: 36, border: "none",
+                borderTop: "1px solid rgba(255,255,255,0.06)",
+                background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)",
+                cursor: "pointer", display: "flex", alignItems: "center",
+                justifyContent: "center", fontSize: 14, transition: "all 0.2s",
+              }}
+              title={collapsed ? "展开侧边栏" : "折叠侧边栏"}
+            >
+              {collapsed ? "→" : "←"}
+            </button>
+            <div style={{
+              padding: "12px 20px",
+              borderTop: "1px solid rgba(255,255,255,0.06)",
+              background: "rgba(0,0,0,0.1)",
+              backdropFilter: "blur(8px)",
+              color: "rgba(255,255,255,0.35)", fontSize: 12,
+            }}>
+              账号上限 10 个
+            </div>
           </div>
         </Sider>
 
