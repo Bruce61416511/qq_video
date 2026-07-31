@@ -22,7 +22,7 @@ export default function TrendBoard() {
   const [reportKey, setReportKey] = useState(0)
   const [topicKey, setTopicKey] = useState(0)
   const [topicGenerating, setTopicGenerating] = useState(false)
-  const [activeTab, setActiveTab] = useState("config")
+  const [activeTab, setActiveTab] = useState("topics")
   const [configFiles, setConfigFiles] = useState([])
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingFile, setEditingFile] = useState(null)
