@@ -92,6 +92,39 @@ export default function TextToVideo() {
         if (state.selectedTopicId != null) setSelectedTopicId(state.selectedTopicId)
         if (state.selectedTemplateId != null) setSelectedTemplateId(state.selectedTemplateId)
         if (state.mediaId != null) setMediaId(state.mediaId)
+        if (state.shotProgress) setShotProgress(state.shotProgress)
+        if (state.mediaId != null && state.shotProgress) {
+          setTimeout(() => {
+            Object.entries(state.shotProgress).forEach(([si, p]) => {
+              const shotIndex = parseInt(si)
+              if (p && p.status === 'generating' && !pollRef.current[shotIndex]) {
+                pollRef.current[shotIndex] = setInterval(async () => {
+                  try {
+                    const spRes = await fetch('http://localhost:8000/api/media/' + state.mediaId + '/shots')
+                    const shots = await spRes.json()
+                    const s = shots.find(sh => sh.shot_index === shotIndex)
+                    if (s) {
+                      setShotProgress(prev => ({
+                        ...prev,
+                        [shotIndex]: {
+                          ...prev[shotIndex],
+                          status: s.status === 'done' ? 'done' : s.status === 'failed' ? 'failed' : 'generating',
+                          progress: s.progress || 0,
+                          video_path: s.clip_path || prev[shotIndex]?.video_path,
+                          audio_path: s.audio_path || prev[shotIndex]?.audio_path,
+                        }
+                      }))
+                      if (s.status === 'done' || s.status === 'failed' || s.status === 'cancelled') {
+                        clearInterval(pollRef.current[shotIndex])
+                        delete pollRef.current[shotIndex]
+                      }
+                    }
+                  } catch (e) {}
+                }, 1500)
+              }
+            })
+          }, 300)
+        }
       }
     } catch (e) {}
   }, [])
@@ -155,10 +188,10 @@ export default function TextToVideo() {
   // 持久化分镜状态到 localStorage（仅在有数据时保存，防止空状态覆盖）
   useEffect(() => {
     if (shots.length > 0 || selectedTopic) {
-      const state = { shots, current, selectedTopic, selectedTopicId, selectedTemplateId, mediaId }
+      const state = { shots, current, selectedTopic, selectedTopicId, selectedTemplateId, mediaId, shotProgress }
       localStorage.setItem("text_to_video_state", JSON.stringify(state))
     }
-  }, [shots, current, selectedTopic, selectedTopicId, selectedTemplateId])
+  }, [shots, current, selectedTopic, selectedTopicId, selectedTemplateId, mediaId, shotProgress])
 
   const [regeneratingIndex, setRegeneratingIndex] = useState(-1)
 
@@ -333,48 +366,108 @@ export default function TextToVideo() {
     }
   }
 
-  const regenerateSingleVideo = async (shotIndex, newPrompt) => {
+  const cancelShotGeneration = async (shotIndex) => {
     if (!mediaId) return
-    setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'generating' } }))
+    // Clear poll interval
+    if (pollRef.current[shotIndex]) {
+      clearInterval(pollRef.current[shotIndex])
+      delete pollRef.current[shotIndex]
+    }
+    try {
+      await fetch('http://localhost:8000/api/media/' + mediaId + '/shots/' + shotIndex + '/cancel', { method: 'POST' })
+    } catch (e) {}
+    setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'cancelled' } }))
+    message.info('分镜 ' + shotIndex + ' 已取消')
+  }
+
+    const regenerateSingleVideo = async (shotIndex, newPrompt) => {
+    if (!mediaId) { message.warning('请先保存分镜方案'); return }
+    setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'generating', progress: 0, genType: 'video' } }))
     try {
       const res = await fetch('http://localhost:8000/api/media/' + mediaId + '/regenerate-shot-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ shot_index: shotIndex, scene_prompt: newPrompt }),
       })
-      const data = await res.json()
-      setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: data.status, video_path: data.video_path } }))
-      message.success('分镜 ' + shotIndex + ' 视频已重新生成')
+      if (!res.ok) { setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'failed' } })); message.error('\xe6\x8f\x90\xe4\xba\xa4\xe5\xa4\xb1\xe8\xb4\xa5\xef\xbc\x8c\xe8\xaf\xb7\xe6\xa3\x80\xe6\x9f\xa5\xe5\x88\x86\xe9\x95\x9c\xe6\x98\xaf\xe5\x90\xa6\xe5\xb7\xb2\xe4\xbf\x9d\xe5\xad\x98'); return }
+      pollRef.current[shotIndex] = setInterval(async () => {
+        try {
+          const spRes = await fetch('http://localhost:8000/api/media/' + mediaId + '/shots')
+          const shots = await spRes.json()
+          const s = shots.find(sh => sh.shot_index === shotIndex)
+          if (s) {
+            setShotProgress(p => ({
+              ...p,
+              [shotIndex]: {
+                ...p[shotIndex],
+                status: s.status === 'done' ? 'done' : s.status === 'failed' ? 'failed' : 'generating',
+                progress: s.progress || 0,
+                video_path: s.clip_path || p[shotIndex]?.video_path,
+                audio_path: s.audio_path || p[shotIndex]?.audio_path,
+              }
+            }))
+            if (s.status === 'done') {
+              clearInterval(pollRef.current[shotIndex])
+              delete pollRef.current[shotIndex]
+              message.success('分镜 ' + shotIndex + ' 视频生成完成')
+            } else if (s.status === 'failed') {
+              clearInterval(pollRef.current[shotIndex])
+              delete pollRef.current[shotIndex]
+              message.error('分镜 ' + shotIndex + ' 视频生成失败')
+            }
+          }
+        } catch (e) {}
+      }, 1500)
     } catch (e) {
       setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'failed' } }))
-      message.error('重新生成失败')
+      message.error('提交生成失败')
     }
   }
 
-  const regenerateSingleAudio = async (shotIndex, newScript) => {
-    if (!mediaId) return
-    setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'generating' } }))
+const regenerateSingleAudio = async (shotIndex, newScript) => {
+    if (!mediaId) { message.warning('请先保存分镜方案'); return }
+    setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'generating', progress: 0, genType: 'audio' } }))
     try {
       const res = await fetch('http://localhost:8000/api/media/' + mediaId + '/regenerate-shot-audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ shot_index: shotIndex, voice_script: newScript }),
       })
-      const data = await res.json()
-      setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], audio_path: data.audio_path } }))
-      const sp = await fetch('http://localhost:8000/api/media/' + mediaId + '/shots').then(r => r.json())
-      const thisShot = sp.find(s => s.shot_index === shotIndex)
-      if (thisShot && thisShot.clip_path) {
-        setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'done' } }))
-      } else {
-        setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'audio_ready' } }))
-      }
-      message.success('分镜 ' + shotIndex + ' 语音已重新生成')
+      if (!res.ok) { setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'failed' } })); message.error('\xe6\x8f\x90\xe4\xba\xa4\xe5\xa4\xb1\xe8\xb4\xa5\xef\xbc\x8c\xe8\xaf\xb7\xe6\xa3\x80\xe6\x9f\xa5\xe5\x88\x86\xe9\x95\x9c\xe6\x98\xaf\xe5\x90\xa6\xe5\xb7\xb2\xe4\xbf\x9d\xe5\xad\x98'); return }
+      pollRef.current[shotIndex] = setInterval(async () => {
+        try {
+          const spRes = await fetch('http://localhost:8000/api/media/' + mediaId + '/shots')
+          const shots = await spRes.json()
+          const s = shots.find(sh => sh.shot_index === shotIndex)
+          if (s) {
+            setShotProgress(p => ({
+              ...p,
+              [shotIndex]: {
+                ...p[shotIndex],
+                status: s.audio_path ? (s.clip_path ? 'done' : 'audio_ready') : s.status === 'failed' ? 'failed' : 'generating',
+                progress: s.progress || 0,
+                video_path: s.clip_path || p[shotIndex]?.video_path,
+                audio_path: s.audio_path || p[shotIndex]?.audio_path,
+              }
+            }))
+            if (s.audio_path) {
+              clearInterval(pollRef.current[shotIndex])
+              delete pollRef.current[shotIndex]
+              message.success('分镜 ' + shotIndex + ' 语音生成完成')
+            } else if (s.status === 'failed') {
+              clearInterval(pollRef.current[shotIndex])
+              delete pollRef.current[shotIndex]
+              message.error('分镜 ' + shotIndex + ' 语音生成失败')
+            }
+          }
+        } catch (e) {}
+      }, 1500)
     } catch (e) {
       setShotProgress(p => ({ ...p, [shotIndex]: { ...p[shotIndex], status: 'failed' } }))
-      message.error('重新生成失败')
+      message.error('提交生成失败')
     }
   }
+
 
   const handleCompose = async () => {
     if (!mediaId) return
@@ -1006,9 +1099,9 @@ export default function TextToVideo() {
             <Tag color="blue">分镜 {idx + 1}</Tag>
             <Space size={4}>
               <Tag>{shot.duration || shotDuration}秒</Tag>
-
-            </Space>
-          </div>
+                </Space>
+              </div>
+              
           <div style={{ marginBottom: 8 }}>
             <span style={{ fontWeight: 600, fontSize: 12, color: '#666' }}>画面提示词</span>
             <TextArea value={shot.scene_prompt || ''} rows={3}
@@ -1037,6 +1130,7 @@ export default function TextToVideo() {
   const [polling, setPolling] = useState(false)
   const [shotStatuses, setShotStatuses] = useState([])
   const mediaRef = useRef(resultMedia)
+  const pollRef = useRef({})
 
   useEffect(() => { mediaRef.current = resultMedia }, [resultMedia])
 
@@ -1078,6 +1172,7 @@ export default function TextToVideo() {
         case 'generating': return { text: '生成中...', color: 'processing' }
         case 'done': return { text: '已完成', color: 'success' }
         case 'failed': return { text: '失败', color: 'error' }
+        case 'cancelled': return { text: '已取消', color: 'default' }
         case 'audio_ready': return { text: '语音就绪', color: 'warning' }
         default: return { text: s.status, color: 'default' }
       }
@@ -1110,12 +1205,21 @@ export default function TextToVideo() {
                   <Tag>{shot.duration || shotDuration}秒</Tag>
                 </Space>
               </div>
+              {prog && prog.status === 'generating' && (
+                <div>
+                  <Progress percent={prog.progress || 0} size="small" status="active" style={{ marginBottom: 4 }} />
+                  <Button size="small" danger onClick={() => cancelShotGeneration(si)} style={{ marginBottom: 8 }}>
+                    取消生成
+                  </Button>
+                </div>
+              )}
+
               
               <div style={{ marginBottom: 8 }}>
                 <div style={{ fontWeight: 600, fontSize: 12, color: '#666', marginBottom: 4 }}>
                   画面提示词
                   <Button size="small" type="link" style={{ marginLeft: 8, padding: 0, height: 20 }}
-                    loading={prog?.status === 'generating'}
+                    loading={prog?.genType === 'video' && prog?.status === 'generating'}
                     onClick={() => regenerateSingleVideo(si, shot.scene_prompt)}>
                     <ReloadOutlined /> {prog?.video_path ? '重新生成视频' : '生成视频'}
                   </Button>
@@ -1129,7 +1233,7 @@ export default function TextToVideo() {
                 <div style={{ fontWeight: 600, fontSize: 12, color: '#666', marginBottom: 4 }}>
                   配音文案
                   <Button size="small" type="link" style={{ marginLeft: 8, padding: 0, height: 20 }}
-                    loading={prog?.status === 'generating'}
+                    loading={prog?.genType === 'audio' && prog?.status === 'generating'}
                     onClick={() => regenerateSingleAudio(si, shot.voice_script)}>
                     <ReloadOutlined /> {prog?.audio_path ? '重新生成语音' : '生成语音'}
                   </Button>
@@ -1142,14 +1246,14 @@ export default function TextToVideo() {
               {prog?.video_path && (
                 <div style={{ marginTop: 8 }}>
                   <span style={{ fontSize: 11, color: '#888' }}>视频预览：</span>
-                  <video src={'http://localhost:8000/uploads/' + prog.video_path.split('\\').pop().split('/').pop()} 
+                  <video src={'http://localhost:8000/uploads/' + (prog.video_path.includes('uploads') ? prog.video_path.split('uploads').pop().replace(/\\/g, '/') : prog.video_path.split('\\').pop().split('/').pop())} 
                     controls style={{ width: '100%', maxHeight: 200, borderRadius: 4, marginTop: 4 }} />
                 </div>
               )}
               <div style={{ marginTop: 4 }}>
                   <span style={{ fontSize: 11, color: '#888' }}>语音预览：</span>
                   {prog?.audio_path ? (
-                    <audio src={'http://localhost:8000/uploads/' + prog.audio_path.split('\\').pop().split('/').pop()} 
+                    <audio src={'http://localhost:8000/uploads/' + (prog.audio_path.includes('uploads') ? prog.audio_path.split('uploads').pop().replace(/\\/g, '/') : prog.audio_path.split('\\').pop().split('/').pop())} 
                       controls style={{ width: '100%', marginTop: 4 }} />
                   ) : (
                     <span style={{ fontSize: 11, color: '#bbb' }}>{prog?.status === 'generating' ? '生成中...' : '等待生成'}</span>

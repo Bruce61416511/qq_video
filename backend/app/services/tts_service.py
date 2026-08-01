@@ -1,4 +1,4 @@
-"""
+﻿"""
 TTS 语音合成服务
 参考 MoneyPrinterTurbo: app/services/voice.py
 支持 Edge TTS (免费) / OpenAI TTS / ChatTTS
@@ -73,6 +73,24 @@ async def _edge_tts(text: str, output_path: str, voice_id: str = None) -> str:
         if proc.returncode != 0:
             print(f"[TTS] edge-tts error: {proc.stderr}")
             return ""
+
+        # Post-process: resample to 44100 Hz stereo for browser compatibility
+        # edge-tts outputs 22050 Hz mono which many players cannot handle
+        norm_path = output_path + ".norm.mp3"
+        ffmpeg_cmd = [
+            "ffmpeg", "-y",
+            "-i", output_path,
+            "-ar", "44100",
+            "-ac", "2",
+            "-b:a", "128k",
+            norm_path,
+        ]
+        ffmpeg_proc = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=30)
+        if ffmpeg_proc.returncode == 0 and os.path.exists(norm_path):
+            os.replace(norm_path, output_path)
+        else:
+            print(f"[TTS] ffmpeg normalize warning: {ffmpeg_proc.stderr[:200]}")
+
         return output_path
     except FileNotFoundError:
         print("[TTS] edge-tts not installed, run: pip install edge-tts")

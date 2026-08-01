@@ -460,6 +460,261 @@ async def _create_placeholder_clip(prompt: str, duration: str, size: str) -> str
     return ""
 
 
+
+# ====== background shot generation ======
+
+_shot_tasks = {}  # (media_id, shot_index) -> asyncio.Task
+_shot_cancel = set()  # set of (media_id, shot_index) to cancel
+
+
+async def _run_shot_generation(media_id: int, shot_index: int):
+    """Background task: generate video + audio for one shot with progress updates."""
+    from ..services.video_gen_service import generate_video_clip
+    from ..services.tts_service import generate_voice
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(MediaShot).where(
+                MediaShot.media_id == media_id,
+                MediaShot.shot_index == shot_index,
+            )
+        )
+        shot = result.scalar_one_or_none()
+        if not shot:
+            return
+        scene_prompt = shot.scene_prompt
+        voice_script = shot.voice_script
+        duration = shot.duration
+        media_result = await db.execute(select(Media).where(Media.id == media_id))
+        media = media_result.scalar_one_or_none()
+        size = media.video_size if media else "9:16"
+        resolution = media.video_resolution if media else "1080P"
+
+    # Step 1: TTS
+    if (media_id, shot_index) in _shot_cancel:
+        await _update_shot(media_id, shot_index, status="cancelled", progress=0)
+        _shot_cancel.discard((media_id, shot_index))
+        return
+    await _update_shot(media_id, shot_index, status="tts", progress=10)
+    audio_path = ""
+    if voice_script and voice_script.strip():
+        try:
+            audio_path = await generate_voice(voice_script)
+            if audio_path:
+                await _update_shot(media_id, shot_index, audio_path=audio_path, progress=30)
+            else:
+                print(f"[ShotGen] TTS returned empty for shot {shot_index}")
+        except Exception as e:
+            print(f"[ShotGen] TTS error for shot {shot_index}: {e}")
+
+    # Step 2: Video generation
+    await _update_shot(media_id, shot_index, status="video", progress=35)
+
+    async def _progress_cb(pct: int):
+        mapped = 35 + int(pct * 0.5)
+        await _update_shot(media_id, shot_index, progress=mapped)
+
+    try:
+        video_result = await generate_video_clip(
+            prompt=scene_prompt,
+            duration=duration,
+            size=size,
+            resolution=resolution,
+            progress_callback=_progress_cb,
+        )
+    except Exception as e:
+        video_result = {"status": "error", "message": str(e)}
+
+    clip_path = ""
+    status = "failed"
+
+    if isinstance(video_result, dict):
+        result_status = video_result.get("status", "")
+        if result_status == "done" and video_result.get("url"):
+            await _update_shot(media_id, shot_index, status="downloading", progress=88)
+            clip_path = await _download_video(video_result["url"], media_id, shot_index)
+            if clip_path and os.path.exists(clip_path):
+                status = "done"
+            else:
+                status = "failed"
+                clip_path = f"download_failed: {video_result.get('url', '')[:80]}"
+        elif result_status == "no_api":
+            clip_path = await _create_placeholder_clip(scene_prompt, duration, size)
+            status = "done" if clip_path else "failed"
+        else:
+            status = "failed"
+            err_msg = video_result.get("message", result_status or "unknown")
+            clip_path = f"gen_failed: {err_msg[:200]}"
+    elif video_result:
+        clip_path = str(video_result)
+        status = "done" if os.path.exists(clip_path) else "failed"
+
+    await _update_shot(media_id, shot_index, status=status, clip_path=clip_path if status == "done" else clip_path, progress=100 if status == "done" else 0)
+    print(f"[ShotGen] shot {media_id}/{shot_index}: status={status} clip={clip_path[:80] if clip_path else 'none'}")
+
+
+async def _run_shot_video_only(media_id: int, shot_index: int):
+    """Background task: generate ONLY video for one shot (skip TTS)."""
+    from ..services.video_gen_service import generate_video_clip
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(MediaShot).where(
+                MediaShot.media_id == media_id,
+                MediaShot.shot_index == shot_index,
+            )
+        )
+        shot = result.scalar_one_or_none()
+        if not shot:
+            return
+        scene_prompt = shot.scene_prompt
+        duration = shot.duration
+        media_result = await db.execute(select(Media).where(Media.id == media_id))
+        media = media_result.scalar_one_or_none()
+        size = media.video_size if media else "9:16"
+        resolution = media.video_resolution if media else "1080P"
+
+    if (media_id, shot_index) in _shot_cancel:
+        await _update_shot(media_id, shot_index, status="cancelled", progress=0)
+        _shot_cancel.discard((media_id, shot_index))
+        return
+    await _update_shot(media_id, shot_index, status="video", progress=5)
+
+    async def _progress_cb(pct: int):
+        mapped = 5 + int(pct * 0.85)
+        await _update_shot(media_id, shot_index, progress=mapped)
+
+    try:
+        video_result = await generate_video_clip(
+            prompt=scene_prompt,
+            duration=duration,
+            size=size,
+            resolution=resolution,
+            progress_callback=_progress_cb,
+        )
+    except Exception as e:
+        video_result = {"status": "error", "message": str(e)}
+
+    clip_path = ""
+    status = "failed"
+
+    if isinstance(video_result, dict):
+        result_status = video_result.get("status", "")
+        if result_status == "done" and video_result.get("url"):
+            await _update_shot(media_id, shot_index, status="downloading", progress=92)
+            clip_path = await _download_video(video_result["url"], media_id, shot_index)
+            if clip_path and os.path.exists(clip_path):
+                status = "done"
+            else:
+                status = "failed"
+                clip_path = f"download_failed: {video_result.get('url', '')[:80]}"
+        elif result_status == "no_api":
+            clip_path = await _create_placeholder_clip(scene_prompt, duration, size)
+            status = "done" if clip_path else "failed"
+        else:
+            status = "failed"
+            err_msg = video_result.get("message", result_status or "unknown")
+            clip_path = f"gen_failed: {err_msg[:200]}"
+    elif video_result:
+        clip_path = str(video_result)
+        status = "done" if os.path.exists(clip_path) else "failed"
+
+    await _update_shot(media_id, shot_index, status=status, clip_path=clip_path if status == "done" else clip_path, progress=100 if status == "done" else 0)
+    print(f"[ShotVideo] shot {media_id}/{shot_index}: status={status} clip={clip_path[:80] if clip_path else 'none'}")
+
+
+async def _run_shot_audio_only(media_id: int, shot_index: int):
+    """Background task: generate ONLY audio for one shot (skip video)."""
+    from ..services.tts_service import generate_voice
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(MediaShot).where(
+                MediaShot.media_id == media_id,
+                MediaShot.shot_index == shot_index,
+            )
+        )
+        shot = result.scalar_one_or_none()
+        if not shot:
+            return
+        voice_script = shot.voice_script
+
+    if (media_id, shot_index) in _shot_cancel:
+        await _update_shot(media_id, shot_index, status="cancelled", progress=0)
+        _shot_cancel.discard((media_id, shot_index))
+        return
+    await _update_shot(media_id, shot_index, status="tts", progress=10)
+    audio_path = ""
+    if voice_script and voice_script.strip():
+        try:
+            audio_path = await generate_voice(voice_script)
+            if audio_path:
+                await _update_shot(media_id, shot_index, audio_path=audio_path, status="done", progress=100)
+                print(f"[ShotAudio] shot {media_id}/{shot_index}: audio generated")
+            else:
+                await _update_shot(media_id, shot_index, status="failed", progress=100)
+                print(f"[ShotAudio] TTS returned empty for shot {shot_index}")
+        except Exception as e:
+            await _update_shot(media_id, shot_index, status="failed", progress=100)
+            print(f"[ShotAudio] TTS error for shot {shot_index}: {e}")
+    else:
+        await _update_shot(media_id, shot_index, status="failed", progress=100)
+        print(f"[ShotAudio] No voice_script for shot {shot_index}")
+# ====== cancel shot generation ======
+
+@router.post("/{media_id}/shots/{shot_index}/cancel")
+async def cancel_shot(media_id: int, shot_index: int):
+    """Cancel a running shot generation task."""
+    _shot_cancel.add((media_id, shot_index))
+    key = (media_id, shot_index)
+    if key in _shot_tasks and not _shot_tasks[key].done():
+        _shot_tasks[key].cancel()
+    async with async_session() as db:
+        result = await db.execute(
+            select(MediaShot).where(
+                MediaShot.media_id == media_id,
+                MediaShot.shot_index == shot_index,
+            )
+        )
+        shot = result.scalar_one_or_none()
+        if shot and shot.status not in ("done", "failed", "cancelled"):
+            shot.status = "cancelled"
+            shot.progress = 0
+            await db.commit()
+    return {"cancelled": True, "shot_index": shot_index}
+
+
+
+
+
+def _start_shot_task(media_id: int, shot_index: int):
+    """Spawn background asyncio task for shot generation."""
+    key = (media_id, shot_index)
+    if key in _shot_tasks and not _shot_tasks[key].done():
+        return
+    task = asyncio.create_task(_run_shot_generation(media_id, shot_index))
+    _shot_tasks[key] = task
+
+
+def _start_shot_video_task(media_id: int, shot_index: int):
+    """Spawn background task for video-only generation."""
+    key = (media_id, shot_index)
+    if key in _shot_tasks and not _shot_tasks[key].done():
+        return
+    task = asyncio.create_task(_run_shot_video_only(media_id, shot_index))
+    _shot_tasks[key] = task
+
+
+def _start_shot_audio_task(media_id: int, shot_index: int):
+    """Spawn background task for audio-only generation."""
+    key = (media_id, shot_index)
+    if key in _shot_tasks and not _shot_tasks[key].done():
+        return
+    task = asyncio.create_task(_run_shot_audio_only(media_id, shot_index))
+    _shot_tasks[key] = task
+
+
+
 # ====== 逐镜生成（4步流程） ======
 
 @router.post("/save-shots")
@@ -539,9 +794,8 @@ async def test_generate():
 
 @router.post("/{media_id}/shots/{shot_index}/generate")
 async def generate_single_shot(media_id: int, shot_index: int):
-    """Generate video + audio for a single shot. Uses real API if key configured, mock otherwise."""
-    from ..services.video_gen_service import generate_video_clip
-    from ..services.tts_service import generate_voice
+    """Start video + audio generation for a single shot (async, returns immediately).
+    Poll GET /{media_id}/shots for progress."""
 
     async with async_session() as db:
         result = await db.execute(
@@ -553,63 +807,28 @@ async def generate_single_shot(media_id: int, shot_index: int):
         shot = result.scalar_one_or_none()
         if not shot:
             raise HTTPException(404, f"Shot {shot_index} not found for media {media_id}")
-        scene_prompt = shot.scene_prompt
-        voice_script = shot.voice_script
-        duration = shot.duration
-        media_result = await db.execute(select(Media).where(Media.id == media_id))
-        media = media_result.scalar_one_or_none()
-        size = media.video_size if media else "9:16"
+        shot.status = "pending"
+        shot.progress = 0
+        shot.clip_path = ""
+        shot.audio_path = ""
+        await db.commit()
 
-    # TTS: uses edge-tts (free, no key needed)
-    audio_path = ""
-    if voice_script and voice_script.strip():
-        try:
-            audio_path = await generate_voice(voice_script)
-        except Exception as e:
-            print(f"[ShotGen] TTS error for shot {shot_index}: {e}")
-
-    # Video: try real API, fallback to mock placeholder
-    video_result = await generate_video_clip(
-        prompt=scene_prompt,
-        duration=duration,
-        size=size,
-    )
-    clip_path = ""
-    if isinstance(video_result, dict):
-        if video_result.get("status") == "done" and video_result.get("url"):
-            clip_path = await _download_video(video_result["url"], media_id, shot_index)
-        else:
-            clip_path = await _create_placeholder_clip(scene_prompt, duration, size)
-    else:
-        clip_path = str(video_result) if video_result else ""
-
-    status = "done" if clip_path and os.path.exists(clip_path) else "failed"
-    await _update_shot(media_id, shot_index, status=status, clip_path=clip_path, audio_path=audio_path)
+    _start_shot_task(media_id, shot_index)
 
     return {
+        "accepted": True,
         "shot_index": shot_index,
-        "status": status,
-        "video_path": clip_path,
-        "audio_path": audio_path,
+        "status": "pending",
     }
 
 @router.post("/{media_id}/regenerate-shot-video")
 async def regenerate_shot_video(media_id: int, data: dict = Body(...)):
-    """Regenerate video for a single shot with updated prompt."""
-    from ..services.video_gen_service import generate_video_clip
+    """Start async video regeneration for a single shot. Poll GET /{media_id}/shots for progress."""
 
     shot_index = data.get("shot_index")
     scene_prompt = data.get("scene_prompt", "")
 
-    # Get media for size/resolution
     async with async_session() as db:
-        media_result = await db.execute(select(Media).where(Media.id == media_id))
-        media = media_result.scalar_one_or_none()
-        size = media.video_size if media else "9:16"
-        resolution = media.video_resolution if media else "1080P"
-        duration = "5"
-
-        # Update shot prompt in DB
         shot_result = await db.execute(
             select(MediaShot).where(
                 MediaShot.media_id == media_id,
@@ -617,48 +836,25 @@ async def regenerate_shot_video(media_id: int, data: dict = Body(...)):
             )
         )
         shot = shot_result.scalar_one_or_none()
-        if shot:
-            shot.scene_prompt = scene_prompt
-            duration = shot.duration
-            await db.commit()
+        if not shot:
+            raise HTTPException(404, f"Shot {shot_index} not found")
+        shot.scene_prompt = scene_prompt
+        shot.status = "pending"
+        shot.progress = 0
+        shot.clip_path = ""
+        await db.commit()
 
-    await _update_shot_status(media_id, shot_index, "video")
-    try:
-        video_result = await generate_video_clip(
-            prompt=scene_prompt,
-            duration=duration,
-            size=size,
-            resolution=resolution,
-        )
-    except Exception as e:
-        video_result = {"status": "error", "message": str(e)}
-
-    print(f"[ShotGen] shot {shot_index}: video_result={video_result.get('status') if isinstance(video_result, dict) else type(video_result)}", flush=True)
-    clip_path = ""
-    if isinstance(video_result, dict):
-        if video_result.get("status") == "done" and video_result.get("url"):
-            await _update_shot_status(media_id, shot_index, "downloading")
-            clip_path = await _download_video(video_result["url"], media_id, shot_index)
-        else:
-            clip_path = await _create_placeholder_clip(scene_prompt, duration, size)
-    else:
-        clip_path = str(video_result) if video_result else ""
-
-    status = "done" if clip_path and os.path.exists(clip_path) else "failed"
-    await _update_shot(media_id, shot_index, status=status, clip_path=clip_path)
-
-    return {"shot_index": shot_index, "status": status, "video_path": clip_path}
+    _start_shot_video_task(media_id, shot_index)
+    return {"accepted": True, "shot_index": shot_index, "status": "pending"}
 
 
 @router.post("/{media_id}/regenerate-shot-audio")
 async def regenerate_shot_audio(media_id: int, data: dict = Body(...)):
-    """Regenerate audio for a single shot with updated voice script."""
-    from ..services.tts_service import generate_voice
+    """Start async audio regeneration for a single shot. Poll GET /{media_id}/shots for progress."""
 
     shot_index = data.get("shot_index")
     voice_script = data.get("voice_script", "")
 
-    # Update shot in DB
     async with async_session() as db:
         shot_result = await db.execute(
             select(MediaShot).where(
@@ -667,36 +863,16 @@ async def regenerate_shot_audio(media_id: int, data: dict = Body(...)):
             )
         )
         shot = shot_result.scalar_one_or_none()
-        if shot:
-            shot.voice_script = voice_script
-            await db.commit()
+        if not shot:
+            raise HTTPException(404, f"Shot {shot_index} not found")
+        shot.voice_script = voice_script
+        shot.status = "pending"
+        shot.progress = 0
+        shot.audio_path = ""
+        await db.commit()
 
-    await _update_shot_status(media_id, shot_index, "tts")
-    audio_path = ""
-    if voice_script and voice_script.strip():
-        try:
-            audio_path = await generate_voice(voice_script)
-        except Exception as e:
-            print(f"[ShotGen] TTS error: {e}")
-            audio_path = str(UPLOAD_DIR / f"tts_fallback_{uuid.uuid4().hex[:8]}.mp3")
-
-    status = "done" if audio_path and os.path.exists(audio_path) else "failed"
-    await _update_shot(media_id, shot_index, audio_path=audio_path)
-    # Restore status to done after TTS update
-    async with async_session() as db:
-        result = await db.execute(
-            select(MediaShot).where(
-                MediaShot.media_id == media_id,
-                MediaShot.shot_index == shot_index,
-            )
-        )
-        s = result.scalar_one_or_none()
-        if s and s.clip_path and os.path.exists(s.clip_path):
-            await _update_shot(media_id, shot_index, status="done")
-        elif audio_path:
-            await _update_shot(media_id, shot_index, status="audio_ready")
-
-    return {"shot_index": shot_index, "status": status, "audio_path": audio_path}
+    _start_shot_audio_task(media_id, shot_index)
+    return {"accepted": True, "shot_index": shot_index, "status": "pending"}
 
 
 @router.post("/{media_id}/compose")
