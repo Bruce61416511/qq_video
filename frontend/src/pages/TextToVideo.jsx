@@ -8,7 +8,7 @@ import {
   ThunderboltOutlined, LoadingOutlined, CheckCircleOutlined,
   EditOutlined, FileTextOutlined, FileProtectOutlined, SettingOutlined,
   ReloadOutlined, ArrowRightOutlined,
-  ArrowLeftOutlined, VideoCameraOutlined, EyeOutlined, PlusOutlined, MinusOutlined
+  ArrowLeftOutlined, VideoCameraOutlined, EyeOutlined, PlusOutlined, MinusOutlined, DownloadOutlined
 } from '@ant-design/icons'
 import { mediaApi, trendsApi } from '../services/api'
 
@@ -361,6 +361,7 @@ export default function TextToVideo() {
         if (!res.ok) { setShotProgress(p => ({ ...p, [idx]: { status: 'failed' } })); continue }
         // Wait for this shot to complete before starting next
         await new Promise((resolve) => {
+          const timeout = setTimeout(() => { clearInterval(poll); setShotProgress(p => ({ ...p, [idx]: { status: "failed", error: "timeout" } })); resolve(); }, 600000)
           const poll = setInterval(async () => {
             try {
               const spRes = await fetch('http://localhost:8000/api/media/' + id + '/shots')
@@ -379,10 +380,10 @@ export default function TextToVideo() {
                 }))
                 if (s.status === 'done' || s.status === 'failed' || s.status === 'cancelled') {
                   clearInterval(poll)
+                  clearTimeout(timeout)
                   resolve()
                 }
-              }
-            } catch (e) {}
+            } } catch (e) {}
           }, 2000)
         })
       } catch (e) {
@@ -500,13 +501,13 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
     setCurrent(3)
     try {
       const res = await fetch('http://localhost:8000/api/media/' + mediaId + '/compose', { method: 'POST' })
-      if (!res.ok) { message.error('合成失败'); setComposing(false); return }
+      if (!res.ok) { message.error(res.status === 404 ? '分镜数据已过期，请返回重新生成分镜' : '合成失败'); setComposing(false); return }
       // Poll for composition status
       const poll = setInterval(async () => {
         try {
-          const mRes = await fetch('http://localhost:8000/api/media/')
-          const list = await mRes.json()
-          const m = list.find(item => item.id === mediaId)
+          const mRes = await fetch('http://localhost:8000/api/media/' + mediaId)
+          if (!mRes.ok) return
+          const m = await mRes.json()
           if (m) {
             if (m.status === 'ready') {
               clearInterval(poll)
@@ -517,7 +518,7 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
             } else if (m.status === 'failed') {
               clearInterval(poll)
               setComposing(false)
-              message.error('合成失败')
+              message.error('合成失败: ' + (m.duration || ''))
             }
           }
         } catch (e) {}
@@ -1287,7 +1288,7 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
               {prog?.video_path && (
                 <div style={{ marginTop: 8 }}>
                   <span style={{ fontSize: 11, color: '#888' }}>视频预览：</span>
-                  <video src={'http://localhost:8000/uploads/' + (prog.video_path.includes('uploads') ? prog.video_path.split('uploads').pop().replace(/\\/g, '/') : prog.video_path.split('\\').pop().split('/').pop())} 
+                  <video src={'http://localhost:8000/uploads/' + (prog.video_path || '').replace(/\\/g, '/').split('/').pop()}
                     controls style={{ width: '100%', maxHeight: 200, borderRadius: 4, marginTop: 4 }} />
                 </div>
               )}
@@ -1324,12 +1325,13 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
           <h3 style={{ marginTop: 8 }}>视频合成完成！</h3>
           <p style={{ color: '#8c8c8c' }}>时长：{compositionResult.duration || '?'}s</p>
           {compositionResult.path && (
-            <video src={'http://localhost:8000/uploads/' + compositionResult.path.split('\\').pop().split('/').pop()} 
+            <video src={'http://localhost:8000/uploads/' + compositionResult.path.replace(/\\/g, '/').split('/').pop()} 
               controls style={{ width: '100%', maxHeight: 400, borderRadius: 8, marginTop: 16 }} />
           )}
           <div style={{ marginTop: 16 }}>
             <Space>
               <Button type="primary" icon={<VideoCameraOutlined />} onClick={() => navigate('/media')}>
+              {compositionResult.path && <a href={"http://localhost:8000/uploads/" + (compositionResult.path || "").replace(/\\/g, "/").split("/").pop()} download><Button icon={<DownloadOutlined />}>????</Button></a>}
                 前往素材库查看
               </Button>
               <Button onClick={resetAll}>继续创作</Button>

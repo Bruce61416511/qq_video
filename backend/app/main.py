@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import sys
 
 if sys.platform == "win32":
@@ -16,6 +16,8 @@ from .config import UPLOAD_DIR
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    from app.routers.media import cleanup_stale_shots
+    await cleanup_stale_shots()
     await start_worker()
     yield
 

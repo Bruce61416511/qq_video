@@ -68,6 +68,16 @@ async def delete_media(media_id: int, db: AsyncSession = Depends(get_db)):
     return {"ok": True}
 
 
+
+@router.get("/{media_id}", response_model=MediaOut)
+async def get_media(media_id: int, db: AsyncSession = Depends(get_db)):
+    """Get single media record."""
+    result = await db.execute(select(Media).where(Media.id == media_id))
+    media = result.scalar_one_or_none()
+    if not media:
+        raise HTTPException(404, "Media not found")
+    return media
+
 @router.get("/{media_id}/shots", response_model=list[MediaShotOut])
 async def get_shots(media_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
@@ -466,6 +476,33 @@ async def _create_placeholder_clip(prompt: str, duration: str, size: str) -> str
 _shot_tasks = {}  # (media_id, shot_index) -> asyncio.Task
 _shot_cancel = set()  # set of (media_id, shot_index) to cancel
 
+async def cleanup_stale_shots():
+    """On startup, reset shots stuck in running states to pending."""
+    from ..models.models import Media, MediaShot
+    running_states = ["generating", "video", "tts", "downloading"]
+    async with async_session() as db:
+        result = await db.execute(
+            select(MediaShot).where(MediaShot.status.in_(running_states))
+        )
+        stale = result.scalars().all()
+        for shot in stale:
+            shot.status = "pending"
+            shot.progress = 0
+        if stale:
+            await db.commit()
+            print(f"[Startup] Reset {len(stale)} stale shots to pending")
+
+        # Also reset media stuck in generating
+        result2 = await db.execute(
+            select(Media).where(Media.status == MediaStatus.generating)
+        )
+        stale_media = result2.scalars().all()
+        for m in stale_media:
+            m.status = MediaStatus.pending
+        if stale_media:
+            await db.commit()
+            print(f"[Startup] Reset {len(stale_media)} stale media to pending")
+
 
 async def _run_shot_generation(media_id: int, shot_index: int):
     """Background task: generate video + audio for one shot with progress updates."""
@@ -668,7 +705,9 @@ async def cancel_shot(media_id: int, shot_index: int):
     _shot_cancel.add((media_id, shot_index))
     key = (media_id, shot_index)
     if key in _shot_tasks and not _shot_tasks[key].done():
-        _shot_tasks[key].cancel()
+        for task_key in [(media_id, shot_index), (media_id, shot_index, "video"), (media_id, shot_index, "audio")]:
+            if task_key in _shot_tasks and not _shot_tasks[task_key].done():
+                _shot_tasks[task_key].cancel()
     async with async_session() as db:
         result = await db.execute(
             select(MediaShot).where(
@@ -698,7 +737,7 @@ def _start_shot_task(media_id: int, shot_index: int):
 
 def _start_shot_video_task(media_id: int, shot_index: int):
     """Spawn background task for video-only generation."""
-    key = (media_id, shot_index)
+    key = (media_id, shot_index, 'video')
     if key in _shot_tasks and not _shot_tasks[key].done():
         return
     task = asyncio.create_task(_run_shot_video_only(media_id, shot_index))
@@ -707,7 +746,7 @@ def _start_shot_video_task(media_id: int, shot_index: int):
 
 def _start_shot_audio_task(media_id: int, shot_index: int):
     """Spawn background task for audio-only generation."""
-    key = (media_id, shot_index)
+    key = (media_id, shot_index, 'audio')
     if key in _shot_tasks and not _shot_tasks[key].done():
         return
     task = asyncio.create_task(_run_shot_audio_only(media_id, shot_index))
@@ -736,7 +775,7 @@ async def save_shots(data: dict = Body(...), db: AsyncSession = Depends(get_db))
         filepath=str(UPLOAD_DIR / filename),
         size="-",
         duration=f"{total_dur}s" if total_dur else "-",
-        status=MediaStatus.generating,
+        status=MediaStatus.pending,
         source="ai",
         prompt=prompt,
         video_size=size,
@@ -921,6 +960,10 @@ async def _run_compose(media_id: int):
         output_path = str(UPLOAD_DIR / f"ai_{uuid.uuid4().hex}.mp4")
         comp_result = await compose_video(valid_clips, output_path, media.video_size or "9:16", media.video_resolution or "1080P")
 
+        # Clean up ASS subtitle temp files
+        for f in Path(str(UPLOAD_DIR)).glob("sub_*.ass"):
+            try: f.unlink()
+            except: pass
         if comp_result.get("ok"):
             await _update_media(media_id, filepath=comp_result["path"], duration=f"{comp_result['duration']}s", status=MediaStatus.ready)
         else:
