@@ -548,6 +548,81 @@ async def generate_shot_plan(topic: str, shot_count: int, shot_duration: str, co
 
     user_prompt = f"视频主题：{topic}\n分镜数量：{shot_count}个\n每镜时长：{shot_duration}秒"
 
+    if competitor_framework:
+        try:
+            fw = json.loads(competitor_framework) if isinstance(competitor_framework, str) else competitor_framework
+            parts = []
+            style_desc = fw.get("style", "")
+            tone = fw.get("tone", "")
+            arc = fw.get("narrative_arc", "")
+            header = style_desc
+            if tone:
+                header += f" / {tone}"
+            if arc:
+                header += f" / {arc}"
+            if header:
+                parts.append(f"?????{header}")
+            total_dur = fw.get("total_duration", "")
+            if total_dur:
+                parts.append(f"????{total_dur}s")
+            hook = fw.get("hook", {})
+            if isinstance(hook, dict):
+                hook_visual = hook.get("hook_visual", "")
+                if hook_visual:
+                    parts.append(f"?????{hook_visual}")
+            shots_ref = fw.get("shots", [])
+            if shots_ref:
+                shot_lines = []
+                for s in shots_ref:
+                    idx = s.get("index", "?")
+                    dur_s = s.get("duration", "?")
+                    stype = s.get("shot_type", "")
+                    ssize = s.get("shot_size", "")
+                    cam = s.get("camera_movement", "")
+                    vdesc = s.get("visual_desc", "")
+                    script = s.get("script", "")
+                    ebeat = s.get("emotion_beat", "")
+                    meta = f"{ssize}" if ssize else ""
+                    if cam and cam != "??": meta = f"{meta} {cam}" if meta else cam
+                    if stype:
+                        meta = f"{meta} {stype}" if meta else stype
+                    meta_str = f"?{dur_s}s {meta}?" if meta else f"?{dur_s}s?"
+                    desc_parts = []
+                    if vdesc:
+                        desc_parts.append(vdesc)
+                    if ebeat:
+                        desc_parts.append(f"[{ebeat}]")
+                    desc_str = " | ".join(desc_parts)
+                    line_s = f"  - ?{idx}{meta_str}?{desc_str}"
+                    if script:
+                        line_s += f" | ???{script}"
+                    shot_lines.append(line_s)
+                parts.append("?????\n" + "\n".join(shot_lines))
+            ts = fw.get("traffic_strategy", {})
+            if isinstance(ts, dict):
+                cta_type = ts.get("cta_type", "")
+                cta_pos = ts.get("cta_placement", "")
+                if cta_type and cta_type != "?":
+                    cta_str = f"CTA?{cta_type}"
+                    if cta_pos:
+                        cta_str += f"??{cta_pos}??"
+                    parts.append(cta_str)
+            rep = fw.get("replicability", {})
+            if isinstance(rep, dict):
+                copyable = rep.get("copyable_elements", [])
+                if copyable:
+                    ce_text = "?".join(copyable[:5])
+                    parts.append(f"??????{ce_text}")
+                improvements = rep.get("improvement_opportunities", [])
+                if improvements:
+                    imp_text = "?".join(improvements[:3])
+                    parts.append(f"?????{imp_text}")
+            if parts:
+                framework_text = "\n".join(parts)
+                user_prompt += f"\n\n????????\n{framework_text}\n\n??????????????????????????????????????????????????"
+        except:
+            pass
+
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
