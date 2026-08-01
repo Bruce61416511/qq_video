@@ -877,45 +877,56 @@ async def regenerate_shot_audio(media_id: int, data: dict = Body(...)):
 
 @router.post("/{media_id}/compose")
 async def compose_media(media_id: int, db: AsyncSession = Depends(get_db)):
-    """Compose all generated shots into final video."""
-    from ..services.video_composer import compose_video
-
-    # Get all shots
-    result = await db.execute(
-        select(MediaShot).where(MediaShot.media_id == media_id).order_by(MediaShot.shot_index)
-    )
-    shots = result.scalars().all()
-
+    """Start async video composition. Poll GET /media for status."""
     media_result = await db.execute(select(Media).where(Media.id == media_id))
     media = media_result.scalar_one_or_none()
     if not media:
         raise HTTPException(404, "Media not found")
+    media.status = MediaStatus.generating
+    await db.commit()
 
-    clips = []
-    for shot in shots:
-        clips.append({
-            "video_path": shot.clip_path or "",
-            "audio_path": shot.audio_path or "",
-            "subtitle": shot.voice_script or "",
-            "duration": int(shot.duration) if shot.duration else 5,
-        })
-
-    valid_clips = [c for c in clips if c.get("video_path") and os.path.exists(c.get("video_path", ""))]
-    if not valid_clips:
-        raise HTTPException(400, "没有已完成的分镜视频")
-
-    output_path = str(UPLOAD_DIR / f"ai_{uuid.uuid4().hex}.mp4")
-    comp_result = await compose_video(valid_clips, output_path, media.video_size or "9:16", media.video_resolution or "1080P")
-
-    if comp_result.get("ok"):
-        await _update_media(media_id, filepath=comp_result["path"], duration=f"{comp_result['duration']}s", status=MediaStatus.ready)
-        return {"status": "ready", "path": comp_result["path"], "duration": comp_result["duration"]}
-    else:
-        await _update_media(media_id, status=MediaStatus.failed, duration=comp_result.get("error", ""))
-        raise HTTPException(500, comp_result.get("error", "合成失败"))
+    asyncio.create_task(_run_compose(media_id))
+    return {"accepted": True, "media_id": media_id}
 
 
-# ====== 竞品视频拆解（上传视频） ======
+async def _run_compose(media_id: int):
+    """Background task: compose all shots into final video."""
+    from ..services.video_composer import compose_video
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(MediaShot).where(MediaShot.media_id == media_id).order_by(MediaShot.shot_index)
+        )
+        shots = result.scalars().all()
+
+        media_result = await db.execute(select(Media).where(Media.id == media_id))
+        media = media_result.scalar_one_or_none()
+        if not media:
+            return
+
+        clips = []
+        for shot in shots:
+            clips.append({
+                "video_path": shot.clip_path or "",
+                "audio_path": shot.audio_path or "",
+                "subtitle": "",
+                "duration": int(shot.duration) if shot.duration else 5,
+            })
+
+        valid_clips = [c for c in clips if c.get("video_path") and os.path.exists(c.get("video_path", ""))]
+        if not valid_clips:
+            await _update_media(media_id, status=MediaStatus.failed, duration="没有已完成的分镜视频")
+            return
+
+        output_path = str(UPLOAD_DIR / f"ai_{uuid.uuid4().hex}.mp4")
+        comp_result = await compose_video(valid_clips, output_path, media.video_size or "9:16", media.video_resolution or "1080P")
+
+        if comp_result.get("ok"):
+            await _update_media(media_id, filepath=comp_result["path"], duration=f"{comp_result['duration']}s", status=MediaStatus.ready)
+        else:
+            await _update_media(media_id, status=MediaStatus.failed, duration=comp_result.get("error", ""))
+
+
 import subprocess, base64, tempfile
 
 @router.post("/analyze-competitor-video")

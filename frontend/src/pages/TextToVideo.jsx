@@ -355,11 +355,36 @@ export default function TextToVideo() {
     if (!id) return
     for (let i = 0; i < shots.length; i++) {
       const idx = i + 1
-      setShotProgress(p => ({ ...p, [idx]: { status: 'generating' } }))
+      setShotProgress(p => ({ ...p, [idx]: { status: 'generating', progress: 5, genType: 'auto' } }))
       try {
         const res = await fetch('http://localhost:8000/api/media/' + id + '/shots/' + idx + '/generate', { method: 'POST' })
-        const data = await res.json()
-        setShotProgress(p => ({ ...p, [idx]: { status: data.status, video_path: data.video_path, audio_path: data.audio_path } }))
+        if (!res.ok) { setShotProgress(p => ({ ...p, [idx]: { status: 'failed' } })); continue }
+        // Wait for this shot to complete before starting next
+        await new Promise((resolve) => {
+          const poll = setInterval(async () => {
+            try {
+              const spRes = await fetch('http://localhost:8000/api/media/' + id + '/shots')
+              const shots = await spRes.json()
+              const s = shots.find(sh => sh.shot_index === idx)
+              if (s) {
+                setShotProgress(p => ({
+                  ...p,
+                  [idx]: {
+                    ...p[idx],
+                    status: s.status === 'done' ? 'done' : s.status === 'failed' ? 'failed' : 'generating',
+                    progress: s.progress || 0,
+                    video_path: s.clip_path || p[idx]?.video_path,
+                    audio_path: s.audio_path || p[idx]?.audio_path,
+                  }
+                }))
+                if (s.status === 'done' || s.status === 'failed' || s.status === 'cancelled') {
+                  clearInterval(poll)
+                  resolve()
+                }
+              }
+            } catch (e) {}
+          }, 2000)
+        })
       } catch (e) {
         setShotProgress(p => ({ ...p, [idx]: { status: 'failed', error: e.message } }))
       }
@@ -475,17 +500,33 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
     setCurrent(3)
     try {
       const res = await fetch('http://localhost:8000/api/media/' + mediaId + '/compose', { method: 'POST' })
-      const data = await res.json()
-      setCompositionResult(data)
-      setResultMedia({ id: mediaId, name: 'composed.mp4', status: 'ready' })
-      message.success('视频合成完成！')
+      if (!res.ok) { message.error('合成失败'); setComposing(false); return }
+      // Poll for composition status
+      const poll = setInterval(async () => {
+        try {
+          const mRes = await fetch('http://localhost:8000/api/media/')
+          const list = await mRes.json()
+          const m = list.find(item => item.id === mediaId)
+          if (m) {
+            if (m.status === 'ready') {
+              clearInterval(poll)
+              setResultMedia(m)
+              setCompositionResult({ status: 'ready', path: m.filepath, duration: m.duration })
+              setComposing(false)
+              message.success('合成完成')
+            } else if (m.status === 'failed') {
+              clearInterval(poll)
+              setComposing(false)
+              message.error('合成失败')
+            }
+          }
+        } catch (e) {}
+      }, 2000)
     } catch (e) {
-      message.error('合成失败: ' + e.message)
       setComposing(false)
+      message.error('合成失败: ' + e.message)
     }
   }
-
-  // ---------- Step 1: Input ----------
   const renderStep1 = () => (
     <Card>
       {videoTopics.length > 0 && (
@@ -1301,8 +1342,7 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
           <p style={{ marginTop: 16, fontSize: 15, color: '#8c8c8c' }}>视频生成完成，准备合成</p>
         </div>
       )}
-    </Card>
-  )
+    </Card>)
 
     const { Text } = Typography
 
@@ -1329,6 +1369,7 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
         current={current}
         size="small"
         style={{ marginBottom: 24 }}
+        onChange={(step) => { setComposing(false); setCurrent(step) }}
         items={[
           { title: '输入主题', icon: <EditOutlined /> },
           { title: '编辑分镜', icon: <VideoCameraOutlined /> },
