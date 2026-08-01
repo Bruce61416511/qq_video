@@ -9,6 +9,7 @@ class AccountStatus(str, enum.Enum):
     expired = "expired"
 
 class MediaStatus(str, enum.Enum):
+    pending = "pending"
     ready = "ready"
     generating = "generating"
     failed = "failed"
