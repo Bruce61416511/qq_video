@@ -1,4 +1,4 @@
-"""
+﻿"""
 LLM 分镜策划服务
 参考 MoneyPrinterTurbo: app/services/llm.py
 支持 OpenAI / DeepSeek / 通义千问 / 智谱 等兼容接口
@@ -301,7 +301,7 @@ async def generate_shot_plan_from_topic(
     end_dur = base_dur
     mid_dur = (total_duration - hook_dur - end_dur) // outline_count if outline_count > 0 else base_dur
 
-    prompt = TOPIC_SHOT_PROMPT.replace("{hook_dur}", str(hook_dur)).replace("{end_dur}", str(end_dur))
+    prompt = TOPIC_SHOT_PROMPT.replace("{hook_dur}", str(hook_dur)).replace("{mid_dur}", str(mid_dur)).replace("{end_dur}", str(end_dur))
 
     outline_text = "\n".join(f"{i+1}. {o}" for i, o in enumerate(content_outline)) if content_outline else "无"
 

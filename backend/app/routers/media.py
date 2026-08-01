@@ -1,4 +1,4 @@
-import os
+﻿import os
 import uuid
 import asyncio
 import traceback
@@ -909,7 +909,7 @@ async def _run_compose(media_id: int):
             clips.append({
                 "video_path": shot.clip_path or "",
                 "audio_path": shot.audio_path or "",
-                "subtitle": "",
+                "subtitle": shot.voice_script or "",
                 "duration": int(shot.duration) if shot.duration else 5,
             })
 
