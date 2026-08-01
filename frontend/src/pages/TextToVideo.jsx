@@ -61,6 +61,8 @@ export default function TextToVideo() {
   const [shotProgress, setShotProgress] = useState({})
   const [composing, setComposing] = useState(false)
   const [compositionResult, setCompositionResult] = useState(null)
+  const [genMode, setGenMode] = useState('auto')
+  const [showGenModeModal, setShowGenModeModal] = useState(false)
 
   // Load video topics on mount
   useEffect(() => {
@@ -288,7 +290,7 @@ export default function TextToVideo() {
   }
 
   // Save shots and create media record (step 1 -> step 2)
-  const handleSaveShots = async () => {
+  const handleSaveShots = async (mode = 'auto') => {
     const prompt = selectedTopic?.video_topic || topic || '未命名视频'
     try {
       const res = await fetch("http://localhost:8000/api/media/save-shots", {
@@ -306,7 +308,10 @@ export default function TextToVideo() {
       const data = await res.json()
       setMediaId(data.media_id)
       setCurrent(2)
-      setTimeout(() => generateAllShots(data.media_id), 500)
+      setGenMode(mode)
+      if (mode === 'auto') {
+        setTimeout(() => generateAllShots(data.media_id), 500)
+      }
     } catch (e) {
       message.error('保存失败: ' + e.message)
     }
@@ -1020,7 +1025,7 @@ export default function TextToVideo() {
       ))}
       <Divider />
       <div style={{ textAlign: 'right' }}>
-        <Button type="primary" size="large" icon={<ArrowRightOutlined />} onClick={handleSaveShots}>
+        <Button type="primary" size="large" icon={<ArrowRightOutlined />} onClick={() => setShowGenModeModal(true)}>
             下一步：逐镜生成
           </Button>
       </div>
@@ -1278,6 +1283,44 @@ export default function TextToVideo() {
 
   return (
     <div>
+            <Modal
+        title="🚀 选择生成模式"
+        open={showGenModeModal}
+        onCancel={() => setShowGenModeModal(false)}
+        width={520}
+        footer={null}
+      >
+        <div style={{ display: 'flex', gap: 16, padding: '16px 0' }}>
+          <Card
+            hoverable
+            size="small"
+            style={{ flex: 1, textAlign: 'center', cursor: 'pointer', border: '2px solid #e8e8e8' }}
+            styles={{ body: { padding: '24px 16px' } }}
+            onClick={() => { setShowGenModeModal(false); handleSaveShots('auto') }}
+          >
+            <div style={{ fontSize: 40, marginBottom: 12 }}>⚡</div>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>排队执行</div>
+            <div style={{ fontSize: 12, color: '#888', lineHeight: 1.6 }}>
+              保存分镜后自动排队，依次生成所有分镜的视频和配音
+            </div>
+            <Tag color="blue" style={{ marginTop: 12 }}>推荐</Tag>
+          </Card>
+          <Card
+            hoverable
+            size="small"
+            style={{ flex: 1, textAlign: 'center', cursor: 'pointer', border: '2px solid #e8e8e8' }}
+            styles={{ body: { padding: '24px 16px' } }}
+            onClick={() => { setShowGenModeModal(false); handleSaveShots('manual') }}
+          >
+            <div style={{ fontSize: 40, marginBottom: 12 }}>🖐️</div>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>手动执行</div>
+            <div style={{ fontSize: 12, color: '#888', lineHeight: 1.6 }}>
+              仅保存分镜，进入逐镜页面后手动点击每个分镜单独生成
+            </div>
+            <Tag style={{ marginTop: 12 }}>自由控制</Tag>
+          </Card>
+        </div>
+      </Modal>
       <Modal
         title="📋 发送给 LLM 的数据预览"
         open={previewOpen}
