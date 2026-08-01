@@ -127,6 +127,12 @@ export default function TextToVideo() {
         }
       }
     } catch (e) {}
+    return () => {
+      Object.keys(pollRef.current).forEach(key => {
+        clearInterval(pollRef.current[key])
+        delete pollRef.current[key]
+      })
+    }
   }, [])
 
 
