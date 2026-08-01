@@ -20,8 +20,6 @@ def _video_model_for(service: str) -> str:
     """Return the default model for a given video service."""
     return _VIDEO_MODEL_DEFAULTS.get(service, "wanx2.1-t2v-plus")
 
-
-
 async def generate_video_clip(prompt: str, duration: str = "5", size: str = "9:16", resolution: str = "1080P", progress_callback=None):
     """Generate a video clip from text prompt.
     

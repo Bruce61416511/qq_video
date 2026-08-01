@@ -69,15 +69,6 @@ async def delete_media(media_id: int, db: AsyncSession = Depends(get_db)):
 
 
 
-@router.get("/{media_id}", response_model=MediaOut)
-async def get_media(media_id: int, db: AsyncSession = Depends(get_db)):
-    """Get single media record."""
-    result = await db.execute(select(Media).where(Media.id == media_id))
-    media = result.scalar_one_or_none()
-    if not media:
-        raise HTTPException(404, "Media not found")
-    return media
-
 @router.get("/{media_id}/shots", response_model=list[MediaShotOut])
 async def get_shots(media_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
@@ -1099,6 +1090,7 @@ async def analyze_competitor_route(data: dict = Body(...)):
     result = await analyze_competitor(source_text)
     return result
 
+
 @router.get("/competitor-templates")
 async def list_competitor_templates(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
@@ -1115,6 +1107,14 @@ async def get_competitor_template(template_id: int, db: AsyncSession = Depends(g
         raise HTTPException(404, "模板不存在")
     return {"id": t.id, "name": t.name, "source": t.source, "framework": t.framework, "created_at": t.created_at}
 
+@router.get("/{media_id}", response_model=MediaOut)
+async def get_media(media_id: int, db: AsyncSession = Depends(get_db)):
+    """Get single media record."""
+    result = await db.execute(select(Media).where(Media.id == media_id))
+    media = result.scalar_one_or_none()
+    if not media:
+        raise HTTPException(404, "Media not found")
+    return media
 @router.post("/competitor-templates")
 async def create_competitor_template(data: dict = Body(...), db: AsyncSession = Depends(get_db)):
     t = CompetitorTemplate(
