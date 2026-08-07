@@ -1,10 +1,11 @@
-"""热点洞察 API 路由。"""
+﻿"""热点洞察 API 路由。"""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
 from ..schemas.schemas import HotTopicOut, HotTopicStatusUpdate, TrendConfigUpdate
 from ..services import trend_service
+from pathlib import Path
 
 router = APIRouter(prefix="/api/trends", tags=["trends"])
 
@@ -128,7 +129,7 @@ def _run_crawl():
             timeout=300,
             env=env,
         )
-        _crawl_status["result"] = {"ok": True, "output": proc.stdout[-300:]}
+        _crawl_status["result"] = {"ok": True, "output": (proc.stdout or "")[-300:]}
     except subprocess.TimeoutExpired:
         _crawl_status["result"] = {"ok": False, "error": "采集超时（5分钟）"}
     except Exception as e:
@@ -205,29 +206,44 @@ async def topic_report():
 
 # ── 配置文件管理 ──
 
-CONFIG_FILES = {
-    "ai_interests": "ai_interests.txt",
-    "frequency_words": "frequency_words.txt",
-    "ai_analysis_prompt": "ai_analysis_prompt.txt",
+# 后端自己的提示词（backend/app/prompts/）
+PROMPT_FILES = {
     "topic_to_video_prompt": "topic_to_video_prompt.txt",
     "competitor_analysis_prompt": "competitor_analysis_prompt.txt",
     "shot_topic_prompt": "shot_topic_prompt.txt",
     "manual_topic_prompt": "manual_topic_prompt.txt",
 }
 
+# TrendRadar 原生配置（TrendRadar-master/config/）
+TR_CONFIG_FILES = {
+    "ai_interests": "ai_interests.txt",
+    "frequency_words": "frequency_words.txt",
+    "ai_analysis_prompt": "ai_analysis_prompt.txt",
+}
+
+ALL_CONFIG_FILES = {**PROMPT_FILES, **TR_CONFIG_FILES}
+
+PROMPT_DIR = Path(__file__).parent.parent / "prompts"
+TR_CONFIG_DIR = trend_service.TRENDRADAR_DIR / "config"
+
+def _config_path(key: str) -> Path:
+    if key in PROMPT_FILES:
+        return PROMPT_DIR / PROMPT_FILES[key]
+    return TR_CONFIG_DIR / TR_CONFIG_FILES[key]
+
 @router.get("/config/files")
 async def list_config_files():
     """列出所有可编辑的配置文件及路径。"""
-    config_dir = trend_service.TRENDRADAR_DIR / "config"
     files = []
-    for key, filename in CONFIG_FILES.items():
-        path = config_dir / filename
+    for key, filename in ALL_CONFIG_FILES.items():
+        path = _config_path(key)
         exists = path.exists()
         size = path.stat().st_size if exists else 0
+        rel = str(path.relative_to(Path(__file__).parent.parent.parent.parent))
         files.append({
             "key": key,
             "filename": filename,
-            "path": str(path.relative_to(trend_service.TRENDRADAR_DIR)),
+            "path": rel,
             "exists": exists,
             "size": size,
             "description": {
@@ -245,9 +261,9 @@ async def list_config_files():
 @router.get("/config/files/{key}")
 async def get_config_file(key: str):
     """读取指定配置文件内容。"""
-    if key not in CONFIG_FILES:
+    if key not in ALL_CONFIG_FILES:
         raise HTTPException(404, f"未知配置文件: {key}")
-    path = trend_service.TRENDRADAR_DIR / "config" / CONFIG_FILES[key]
+    path = _config_path(key)
     if not path.exists():
         return {"key": key, "content": "", "exists": False}
     return {"key": key, "content": path.read_text(encoding="utf-8"), "exists": True}
@@ -255,14 +271,13 @@ async def get_config_file(key: str):
 @router.put("/config/files/{key}")
 async def save_config_file(key: str, data: dict):
     """保存指定配置文件内容。"""
-    if key not in CONFIG_FILES:
+    if key not in ALL_CONFIG_FILES:
         raise HTTPException(404, f"未知配置文件: {key}")
     content = data.get("content", "")
-    path = trend_service.TRENDRADAR_DIR / "config" / CONFIG_FILES[key]
+    path = _config_path(key)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     return {"ok": True, "key": key}
-
 
 @router.get("/topic-to-video/data")
 async def get_topic_data():

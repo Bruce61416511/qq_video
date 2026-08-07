@@ -16,7 +16,7 @@ LLM_BASE_URLS = {
     "moonshot": "https://api.moonshot.cn/v1",
 }
 
-PROMPT_DIR = Path(__file__).parent.parent.parent.parent / "TrendRadar-master" / "config"
+PROMPT_DIR = Path(__file__).parent.parent / "prompts"
 
 def _load_prompt(filename: str, fallback: str) -> str:
     """从配置文件读取提示词，文件不存在时使用硬编码兜底。"""

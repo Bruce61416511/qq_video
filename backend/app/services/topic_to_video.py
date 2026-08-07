@@ -1,4 +1,4 @@
-"""热搜 → 视频选题转换服务。"""
+﻿"""热搜 → 视频选题转换服务。"""
 import json
 import re
 import sqlite3
@@ -6,10 +6,11 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-TRENDRADAR_DIR = Path(__file__).parent.parent.parent.parent / "TrendRadar-master"
-PROMPT_FILE = TRENDRADAR_DIR / "config" / "topic_to_video_prompt.txt"
-OUTPUT_FILE = TRENDRADAR_DIR / "output" / "topic_to_video.html"
-TOPIC_JSON_FILE = TRENDRADAR_DIR / "output" / "topic_to_video.json"
+BACKEND_DIR = Path(__file__).parent.parent.parent
+TRENDRADAR_DIR = Path(__file__).parent.parent.parent.parent / 'TrendRadar-master'
+PROMPT_FILE = BACKEND_DIR / "app" / "prompts" / "topic_to_video_prompt.txt"
+OUTPUT_FILE = BACKEND_DIR / "output" / "topic_to_video.html"
+TOPIC_JSON_FILE = BACKEND_DIR / "output" / "topic_to_video.json"
 
 _status = {"running": False, "result": None, "html": None, "generated_at": None}
 _last_topics = []
