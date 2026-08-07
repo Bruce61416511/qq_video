@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+﻿import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { Tabs, Card, Button, Space, App, Switch, Tag, Drawer, Input, List, Typography } from "antd"
 import {
@@ -29,6 +29,22 @@ export default function TrendBoard() {
   const [activeTab, setActiveTab] = useState("topics")
   const [topics, setTopics] = useState([])
   const [topicsGeneratedAt, setTopicsGeneratedAt] = useState(null)
+
+    const loadCrawlerData = async () => {
+    try {
+      const data = await trendsApi.list(null, 500)
+      if (Array.isArray(data)) {
+        setCrawlerResults({
+          weixin: data.filter(t => t.platform === "weixin"),
+          rmw_health: data.filter(t => t.platform === "rmw_health"),
+          cifst: data.filter(t => t.platform === "cifst"),
+        })
+      }
+    } catch (e) { /* ignore */ }
+  }
+  useEffect(() => {
+    if (activeTab === "crawler") loadCrawlerData()
+  }, [activeTab])
 
   const loadTopics = async () => {
     try {
@@ -113,14 +129,13 @@ export default function TrendBoard() {
         trendsApi.refreshRmwHealth().catch(e => ({ ok: false, count: 0, error: e.message })),
         trendsApi.refreshCifst().catch(e => ({ ok: false, count: 0, error: e.message })),
       ])
-      message.success(`微信热文 ${results[0].count} 条 | 人民网 ${results[1].count} 条 | 食科学会 ${results[2].count} 条`)
-      const data = await trendsApi.list()
+      const data = await trendsApi.list(null, 500)
       if (Array.isArray(data)) {
-        setCrawlerResults({
-          weixin: data.filter(t => t.platform === "weixin"),
-          rmw_health: data.filter(t => t.platform === "rmw_health"),
-          cifst: data.filter(t => t.platform === "cifst"),
-        })
+        const wx = data.filter(t => t.platform === "weixin")
+        const rmw = data.filter(t => t.platform === "rmw_health")
+        const cifst = data.filter(t => t.platform === "cifst")
+        setCrawlerResults({ weixin: wx, rmw_health: rmw, cifst: cifst })
+        message.success(`微信热文 ${wx.length} 条 | 人民网 ${rmw.length} 条 | 食科学会 ${cifst.length} 条`)
       }
     } catch (e) {
       message.error("爬取失败: " + e.message)

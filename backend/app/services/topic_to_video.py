@@ -3,6 +3,7 @@ import json
 import re
 import sqlite3
 import threading
+import asyncio
 from datetime import datetime
 from pathlib import Path
 
@@ -166,6 +167,40 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
 </html>"""
 
 
+
+def _get_crawler_topics() -> list[dict]:
+    """从热点爬虫的 hot_topics 表读取数据。"""
+    try:
+        from ..database import async_session
+        from ..models.models import HotTopic
+        from sqlalchemy import select as _select
+
+        async def _query():
+            async with async_session() as db:
+                r = await db.execute(
+                    _select(HotTopic).where(
+                        HotTopic.platform.in_(["weixin", "rmw_health", "cifst"])
+                    )
+                )
+                rows = r.scalars().all()
+                return [
+                    {
+                        "title": row.title,
+                        "url": row.url or "",
+                        "platform_id": row.platform,
+                        "score": float(row.heat_score or 5000),
+                    }
+                    for row in rows
+                ]
+
+        try:
+            return asyncio.run(_query())
+        except RuntimeError:
+            return asyncio.run(_query())
+    except Exception as e:
+        print(f"[topic_to_video] crawler topics error: {e}")
+        return []
+
 def generate():
     global _status, _last_topics
     _status["running"] = True
@@ -177,6 +212,7 @@ def generate():
         results = [r for r in all_results if r['title'] in report_titles]
         if not report_titles:
             results = all_results
+        results += _get_crawler_topics()
         if not results:
             _status["html"] = _generate_html([], gen_time=_status.get("generated_at"))
             _status["result"] = {"ok": True, "count": 0, "message": "没有匹配的热点"}

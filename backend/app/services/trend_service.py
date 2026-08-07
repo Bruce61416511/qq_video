@@ -5,7 +5,7 @@ import re
 import sqlite3
 from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from ..models.models import HotTopic, HotTopicStatus
 
 TRENDRADAR_DIR = Path(__file__).parent.parent.parent.parent / "TrendRadar-master"
@@ -372,6 +372,8 @@ async def fetch_wechat_hot_articles(db: AsyncSession) -> list[HotTopic]:
     """从 tophub.today 爬取微信 24h 热文榜，入库 hot_topics。"""
     topics = []
 
+    await db.execute(delete(HotTopic).where(HotTopic.platform == "weixin"))
+    await db.commit()
     try:
         resp = _requests.get(WECHAT_HOT_URL, headers=HEADERS, timeout=15)
         resp.encoding = "utf-8"
@@ -424,6 +426,8 @@ async def fetch_rmw_health_articles(db: AsyncSession) -> list[HotTopic]:
     """从人民网健康频道滚动新闻页抓取文章，入库 hot_topics。"""
     topics = []
 
+    await db.execute(delete(HotTopic).where(HotTopic.platform == "rmw_health"))
+    await db.commit()
     try:
         resp = _requests.get(RMW_HEALTH_URL, headers=HEADERS, timeout=15)
         resp.encoding = "utf-8"
@@ -432,10 +436,18 @@ async def fetch_rmw_health_articles(db: AsyncSession) -> list[HotTopic]:
             r"href='(/n1/\d{4}/\d{4}/c\d+-\d+\.html)'[^>]*>([^<]+)</a>",
             resp.text,
         )
+        from datetime import datetime, timedelta
+        cutoff = datetime.now() - timedelta(days=3)
         for path, title in items:
             title = title.strip()
             if not title or len(title) < 4:
                 continue
+            # Parse date from URL: /n1/2026/0807/...
+            m = re.match(r"/n1/(\d{4})/(\d{4})/", path)
+            if m:
+                article_date = datetime.strptime(m.group(1) + m.group(2), "%Y%m%d")
+                if article_date < cutoff:
+                    continue
             url = f"http://health.people.com.cn{path}"
             existing = await db.execute(
                 select(HotTopic).where(HotTopic.title == title, HotTopic.platform == "rmw_health")
@@ -466,51 +478,64 @@ async def fetch_rmw_health_articles(db: AsyncSession) -> list[HotTopic]:
 
 # ── 食科学会 ──
 
-CIFST_URL = "https://www.cifst.org.cn/"
+CIFST_URLS = [
+    "https://www.cifst.org.cn/dynamic/",
+    "https://www.cifst.org.cn/news/",
+]
 
 
 async def fetch_cifst_articles(db: AsyncSession) -> list[HotTopic]:
     """从中国食品科学技术学会官网抓取动态文章，入库 hot_topics。"""
+    from datetime import datetime, timedelta
+    cutoff = datetime.now() - timedelta(days=3)
     topics = []
+    seen = set()
 
-    try:
-        resp = _requests.get(CIFST_URL, headers=HEADERS, timeout=15)
-        resp.encoding = "utf-8"
-        resp.raise_for_status()
-        items = re.findall(
-            r'href="(/a/dynamic/[^"]+\.html)"[^>]*>([^<]{6,120})</a>',
-            resp.text,
-        )
-        seen = set()
-        for path, title in items:
-            title = title.strip()
-            if not title or title in seen:
-                continue
-            seen.add(title)
-            url = f"https://www.cifst.org.cn{path}"
-            existing = await db.execute(
-                select(HotTopic).where(HotTopic.title == title, HotTopic.platform == "cifst")
+    await db.execute(delete(HotTopic).where(HotTopic.platform == "cifst"))
+    await db.commit()
+    for cifst_url in CIFST_URLS:
+        try:
+            resp = _requests.get(cifst_url, headers=HEADERS, timeout=15)
+            resp.encoding = "utf-8"
+            resp.raise_for_status()
+            items = re.findall(
+                r'href="(/a/[^"]+\.html)"[^>]*>([^<]{6,120})</a>',
+                resp.text,
             )
-            if existing.scalar_one_or_none():
-                continue
+            for path, title in items:
+                title = title.strip()
+                if not title or title in seen:
+                    continue
+                # Parse date from URL: /a/dynamic/dongtai/20260429/ or /a/news/...
+                m = re.search(r"/(\d{4})(\d{2})(\d{2})/", path)
+                if m:
+                    article_date = datetime.strptime(m.group(1) + m.group(2) + m.group(3), "%Y%m%d")
+                    if article_date < cutoff:
+                        continue
+                seen.add(title)
+                url = f"https://www.cifst.org.cn{path}"
+                existing = await db.execute(
+                    select(HotTopic).where(HotTopic.title == title, HotTopic.platform == "cifst")
+                )
+                if existing.scalar_one_or_none():
+                    continue
 
-            topic = HotTopic(
-                title=title,
-                url=url,
-                platform="cifst",
-                heat_score=5000,
-                matched_keywords="",
-                status=HotTopicStatus.new,
-            )
-            db.add(topic)
-            topics.append(topic)
+                topic = HotTopic(
+                    title=title,
+                    url=url,
+                    platform="cifst",
+                    heat_score=5000,
+                    matched_keywords="",
+                    status=HotTopicStatus.new,
+                )
+                db.add(topic)
+                topics.append(topic)
+        except Exception as e:
+            print(f"[CIFST] {cifst_url} error: {e}")
 
-        if topics:
-            await db.commit()
-            print(f"[CIFST] saved {len(topics)} articles")
-
-    except Exception as e:
-        print(f"[CIFST] fetch error: {e}")
+    if topics:
+        await db.commit()
+        print(f"[CIFST] saved {len(topics)} articles")
 
     return topics
 
