@@ -1,4 +1,4 @@
-const BASE = 'http://localhost:8000/api'
+﻿const BASE = 'http://localhost:8000/api'
 
 async function request(url, options = {}) {
   const res = await fetch(`${BASE}${url}`, {
@@ -102,7 +102,10 @@ export const trendsApi = {
     if (offset) params.append('offset', offset)
     return request('/trends?' + params.toString())
   },
-  refresh: () => request('/trends/refresh', { method: 'POST' }),
+  refresh: () => request("/trends/refresh", { method: "POST" }),
+  refreshWechat: () => request("/trends/wechat/refresh", { method: "POST" }),
+  refreshRmwHealth: () => request("/trends/rmw-health/refresh", { method: "POST" }),
+  refreshCifst: () => request("/trends/cifst/refresh", { method: "POST" }),
   crawl: () => request('/trends/crawl', { method: 'POST' }),
   crawlStatus: () => request('/trends/crawl/status'),
   aiAnalysis: () => request('/trends/ai-analysis'),

@@ -4,7 +4,7 @@ import { Tabs, Card, Button, Space, App, Switch, Tag, Drawer, Input, List, Typog
 import {
   ReloadOutlined, ThunderboltOutlined, SettingOutlined,
   SearchOutlined, RobotOutlined, VideoCameraOutlined,
-  ExportOutlined, EditOutlined, FileTextOutlined, FileProtectOutlined,
+  ExportOutlined, EditOutlined, FileTextOutlined, FileProtectOutlined, CloudDownloadOutlined,
 } from "@ant-design/icons"
 import { trendsApi } from "../services/api"
 
@@ -24,6 +24,8 @@ export default function TrendBoard() {
   const [reportKey, setReportKey] = useState(0)
   const [topicKey, setTopicKey] = useState(0)
   const [topicGenerating, setTopicGenerating] = useState(false)
+  const [crawlerLoading, setCrawlerLoading] = useState(false)
+  const [crawlerResults, setCrawlerResults] = useState({ weixin: [], rmw_health: [], cifst: [] })
   const [activeTab, setActiveTab] = useState("topics")
   const [topics, setTopics] = useState([])
   const [topicsGeneratedAt, setTopicsGeneratedAt] = useState(null)
@@ -101,6 +103,30 @@ export default function TrendBoard() {
       }
     } catch (e) { message.error("采集失败: " + e.message) }
     finally { setCrawling(false) }
+  }
+
+  const handleCrawlAll = async () => {
+    setCrawlerLoading(true)
+    try {
+      const results = await Promise.all([
+        trendsApi.refreshWechat().catch(e => ({ ok: false, count: 0, error: e.message })),
+        trendsApi.refreshRmwHealth().catch(e => ({ ok: false, count: 0, error: e.message })),
+        trendsApi.refreshCifst().catch(e => ({ ok: false, count: 0, error: e.message })),
+      ])
+      message.success(`微信热文 ${results[0].count} 条 | 人民网 ${results[1].count} 条 | 食科学会 ${results[2].count} 条`)
+      const data = await trendsApi.list()
+      if (Array.isArray(data)) {
+        setCrawlerResults({
+          weixin: data.filter(t => t.platform === "weixin"),
+          rmw_health: data.filter(t => t.platform === "rmw_health"),
+          cifst: data.filter(t => t.platform === "cifst"),
+        })
+      }
+    } catch (e) {
+      message.error("爬取失败: " + e.message)
+    } finally {
+      setCrawlerLoading(false)
+    }
   }
 
   const generateTopics = async () => {
@@ -190,6 +216,7 @@ export default function TrendBoard() {
               {filterMethod === "ai" ? "AI 检索" : "关键词检索"}
             </Tag>
             <Space>
+              <Button size="small" type="primary" icon={<ReloadOutlined />} onClick={handleCrawl} loading={crawling}>重新采集</Button>
               <Button size="small" icon={<ReloadOutlined />} onClick={() => setReportKey(k => k + 1)}>刷新</Button>
               <Button size="small" icon={<ExportOutlined />} onClick={() => window.open(trendsApi.getReport(), "_blank")}>新窗口</Button>
             </Space>
@@ -197,6 +224,55 @@ export default function TrendBoard() {
           <iframe key={reportKey} src={trendsApi.getReport()}
             style={{ flex: 1, width: "100%", border: "1px solid #dce9e7", borderRadius: 12, background: "#fff" }}
             title="TrendRadar 报告" />
+        </div>
+      ),
+    },
+    {
+      key: "crawler", label: "热点爬虫", icon: <CloudDownloadOutlined />,
+      children: (
+        <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 180px)", overflow: "auto" }}>
+          <div style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+            <span style={{ color: "#666", fontSize: 13 }}>
+              一键爬取微信热文、人民网健康、食科学会
+            </span>
+            <Button type="primary" icon={<CloudDownloadOutlined />} onClick={handleCrawlAll} loading={crawlerLoading}>
+              全部爬取
+            </Button>
+          </div>
+
+          <div style={{ display: "flex", gap: 16, flex: 1, overflow: "auto" }}>
+            {[
+              { key: "weixin", label: "微信热文", color: "#07c160" },
+              { key: "rmw_health", label: "人民网健康", color: "#e60012" },
+              { key: "cifst", label: "食科学会", color: "#1a73e8" },
+            ].map(src => (
+              <Card
+                key={src.key}
+                size="small"
+                title={<span style={{ color: src.color }}>{src.label} ({crawlerResults[src.key]?.length || 0})</span>}
+                style={{ flex: 1, minWidth: 280 }}
+                bodyStyle={{ padding: 0, maxHeight: "calc(100vh - 300px)", overflow: "auto" }}
+              >
+                {crawlerResults[src.key]?.length > 0 ? (
+                  <List
+                    size="small"
+                    dataSource={crawlerResults[src.key]}
+                    renderItem={(item, i) => (
+                      <List.Item style={{ padding: "8px 12px" }}>
+                        <a href={item.url} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
+                          {i + 1}. {item.title}
+                        </a>
+                      </List.Item>
+                    )}
+                  />
+                ) : (
+                  <div style={{ padding: 20, textAlign: "center", color: "#999", fontSize: 13 }}>
+                    暂无数据，点击"全部爬取"
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
         </div>
       ),
     },
@@ -296,7 +372,7 @@ export default function TrendBoard() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <h2 style={{ margin: 0 }}><ThunderboltOutlined style={{ marginRight: 8 }} />选题看板</h2>
-        <Button type="primary" icon={<ReloadOutlined />} onClick={handleCrawl} loading={crawling}>重新采集</Button>
+        
       </div>
       <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabs} />
 

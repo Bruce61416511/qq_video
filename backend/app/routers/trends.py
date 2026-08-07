@@ -289,3 +289,28 @@ async def get_topic_data():
 @router.get("/ai-analysis")
 async def get_ai_analysis():
     return trend_service.read_ai_analysis()
+
+# ── 微信热文 ──
+
+@router.post("/wechat/refresh")
+async def refresh_wechat_hot(db: AsyncSession = Depends(get_db)):
+    """从 tophub.today 抓取微信 24h 热文榜。"""
+    topics = await trend_service.fetch_wechat_hot_articles(db)
+    return {"ok": True, "count": len(topics)}
+
+# ── 人民网健康 ──
+
+@router.post("/rmw-health/refresh")
+async def refresh_rmw_health(db: AsyncSession = Depends(get_db)):
+    """从人民网健康频道抓取文章。"""
+    topics = await trend_service.fetch_rmw_health_articles(db)
+    return {"ok": True, "count": len(topics)}
+
+# ── 食科学会 ──
+
+@router.post("/cifst/refresh")
+async def refresh_cifst(db: AsyncSession = Depends(get_db)):
+    """从中国食品科学技术学会抓取文章。"""
+    topics = await trend_service.fetch_cifst_articles(db)
+    return {"ok": True, "count": len(topics)}
+

@@ -32,3 +32,5 @@ TrendRadar-master/_image/
 # Reference & tools
 matrix_repo/
 ffmpeg*.zip
+# Backend generated output
+backend/output/

@@ -1,4 +1,4 @@
-"""热点洞察服务 - 读取 TrendRadar SQLite 数据，管理配置文件。"""
+﻿"""热点洞察服务 - 读取 TrendRadar SQLite 数据，管理配置文件。"""
 
 import os
 import re
@@ -65,6 +65,7 @@ def _latest_db() -> Path | None:
     return dbs[0] if dbs else None
 
 
+
 async def fetch_and_save_topics(db: AsyncSession) -> list[HotTopic]:
     """从 TrendRadar SQLite 读取最新热点，关键词过滤后入库。"""
     latest = _latest_db()
@@ -119,6 +120,7 @@ async def fetch_and_save_topics(db: AsyncSession) -> list[HotTopic]:
             await db.commit()
     except Exception:
         pass  # 数据库读取失败不阻塞
+
 
     return topics
 
@@ -355,3 +357,160 @@ def read_ai_analysis() -> dict:
         "results": results,
         "total": len(results),
     }
+
+# ── 微信热文 ──
+import requests as _requests
+
+WECHAT_HOT_URL = "https://tophub.today/n/WnBe01o371"
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+
+import re
+_WX_PATTERN = re.compile(r'<a href="(https?://[^"]*mp\.weixin\.qq\.com[^"]*)"[^>]*itemid="(\d+)"[^>]*>([^<]+)</a>')
+
+
+async def fetch_wechat_hot_articles(db: AsyncSession) -> list[HotTopic]:
+    """从 tophub.today 爬取微信 24h 热文榜，入库 hot_topics。"""
+    topics = []
+
+    try:
+        resp = _requests.get(WECHAT_HOT_URL, headers=HEADERS, timeout=15)
+        resp.encoding = "utf-8"
+        resp.raise_for_status()
+        items = _WX_PATTERN.findall(resp.text)
+        # 去重
+        seen_urls = set()
+        unique = []
+        for url, itemid, title in items:
+            url = url.replace("&amp;", "&")
+            if url not in seen_urls:
+                seen_urls.add(url)
+                unique.append((title.strip(), url, int(itemid)))
+
+        for title, url, heat in unique[:30]:
+            # 去重：检查 title 是否已存在
+            existing = await db.execute(
+                select(HotTopic).where(HotTopic.title == title, HotTopic.platform == "weixin")
+            )
+            if existing.scalar_one_or_none():
+                continue
+
+            topic = HotTopic(
+                title=title,
+                url=url,
+                platform="weixin",
+                heat_score=max(0, 10000 - (heat % 10000)),
+                matched_keywords="",
+                status=HotTopicStatus.new,
+            )
+            db.add(topic)
+            topics.append(topic)
+
+        if topics:
+            await db.commit()
+            print(f"[WeChat] saved {len(topics)} hot articles")
+
+    except Exception as e:
+        print(f"[WeChat] fetch error: {e}")
+
+    return topics
+
+
+# ── 人民网健康 ──
+
+RMW_HEALTH_URL = "http://health.people.com.cn/GB/415859/index.html"
+
+
+async def fetch_rmw_health_articles(db: AsyncSession) -> list[HotTopic]:
+    """从人民网健康频道滚动新闻页抓取文章，入库 hot_topics。"""
+    topics = []
+
+    try:
+        resp = _requests.get(RMW_HEALTH_URL, headers=HEADERS, timeout=15)
+        resp.encoding = "utf-8"
+        resp.raise_for_status()
+        items = re.findall(
+            r"href='(/n1/\d{4}/\d{4}/c\d+-\d+\.html)'[^>]*>([^<]+)</a>",
+            resp.text,
+        )
+        for path, title in items:
+            title = title.strip()
+            if not title or len(title) < 4:
+                continue
+            url = f"http://health.people.com.cn{path}"
+            existing = await db.execute(
+                select(HotTopic).where(HotTopic.title == title, HotTopic.platform == "rmw_health")
+            )
+            if existing.scalar_one_or_none():
+                continue
+
+            topic = HotTopic(
+                title=title,
+                url=url,
+                platform="rmw_health",
+                heat_score=5000,
+                matched_keywords="",
+                status=HotTopicStatus.new,
+            )
+            db.add(topic)
+            topics.append(topic)
+
+        if topics:
+            await db.commit()
+            print(f"[RMW_Health] saved {len(topics)} articles")
+
+    except Exception as e:
+        print(f"[RMW_Health] fetch error: {e}")
+
+    return topics
+
+
+# ── 食科学会 ──
+
+CIFST_URL = "https://www.cifst.org.cn/"
+
+
+async def fetch_cifst_articles(db: AsyncSession) -> list[HotTopic]:
+    """从中国食品科学技术学会官网抓取动态文章，入库 hot_topics。"""
+    topics = []
+
+    try:
+        resp = _requests.get(CIFST_URL, headers=HEADERS, timeout=15)
+        resp.encoding = "utf-8"
+        resp.raise_for_status()
+        items = re.findall(
+            r'href="(/a/dynamic/[^"]+\.html)"[^>]*>([^<]{6,120})</a>',
+            resp.text,
+        )
+        seen = set()
+        for path, title in items:
+            title = title.strip()
+            if not title or title in seen:
+                continue
+            seen.add(title)
+            url = f"https://www.cifst.org.cn{path}"
+            existing = await db.execute(
+                select(HotTopic).where(HotTopic.title == title, HotTopic.platform == "cifst")
+            )
+            if existing.scalar_one_or_none():
+                continue
+
+            topic = HotTopic(
+                title=title,
+                url=url,
+                platform="cifst",
+                heat_score=5000,
+                matched_keywords="",
+                status=HotTopicStatus.new,
+            )
+            db.add(topic)
+            topics.append(topic)
+
+        if topics:
+            await db.commit()
+            print(f"[CIFST] saved {len(topics)} articles")
+
+    except Exception as e:
+        print(f"[CIFST] fetch error: {e}")
+
+    return topics
+
