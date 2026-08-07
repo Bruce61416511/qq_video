@@ -128,14 +128,18 @@ export default function TrendBoard() {
         trendsApi.refreshWechat().catch(e => ({ ok: false, count: 0, error: e.message })),
         trendsApi.refreshRmwHealth().catch(e => ({ ok: false, count: 0, error: e.message })),
         trendsApi.refreshCifst().catch(e => ({ ok: false, count: 0, error: e.message })),
+        trendsApi.refreshCfsn().catch(e => ({ ok: false, count: 0, error: e.message })),
+        trendsApi.refreshKepu().catch(e => ({ ok: false, count: 0, error: e.message })),
       ])
       const data = await trendsApi.list(null, 500)
       if (Array.isArray(data)) {
         const wx = data.filter(t => t.platform === "weixin")
         const rmw = data.filter(t => t.platform === "rmw_health")
         const cifst = data.filter(t => t.platform === "cifst")
-        setCrawlerResults({ weixin: wx, rmw_health: rmw, cifst: cifst })
-        message.success(`微信热文 ${wx.length} 条 | 人民网 ${rmw.length} 条 | 食科学会 ${cifst.length} 条`)
+        const cfsn = data.filter(t => t.platform === "cfsn")
+        const kepu = data.filter(t => t.platform === "kepu")
+        setCrawlerResults({ weixin: wx, rmw_health: rmw, cifst: cifst, cfsn: cfsn, kepu: kepu })
+        message.success(`微信热文 ${wx.length} | 人民网 ${rmw.length} | 食科学会 ${cifst.length} | 食品安全网 ${cfsn.length} | 科普中国 ${kepu.length}`)
       }
     } catch (e) {
       message.error("爬取失败: " + e.message)
@@ -248,7 +252,7 @@ export default function TrendBoard() {
         <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 180px)", overflow: "auto" }}>
           <div style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
             <span style={{ color: "#666", fontSize: 13 }}>
-              一键爬取微信热文、人民网健康、食科学会
+              一键爬取微信热文、人民网健康、食科学会、食品安全网、科普中国
             </span>
             <Button type="primary" icon={<CloudDownloadOutlined />} onClick={handleCrawlAll} loading={crawlerLoading}>
               全部爬取
@@ -260,12 +264,14 @@ export default function TrendBoard() {
               { key: "weixin", label: "微信热文", color: "#07c160" },
               { key: "rmw_health", label: "人民网健康", color: "#e60012" },
               { key: "cifst", label: "食科学会", color: "#1a73e8" },
+              { key: "cfsn", label: "食品安全网", color: "#fa8c16" },
+              { key: "kepu", label: "科普中国", color: "#722ed1" },
             ].map(src => (
               <Card
                 key={src.key}
                 size="small"
                 title={<span style={{ color: src.color }}>{src.label} ({crawlerResults[src.key]?.length || 0})</span>}
-                style={{ flex: 1, minWidth: 280 }}
+                style={{ flex: 1, minWidth: 200 }}
                 bodyStyle={{ padding: 0, maxHeight: "calc(100vh - 300px)", overflow: "auto" }}
               >
                 {crawlerResults[src.key]?.length > 0 ? (

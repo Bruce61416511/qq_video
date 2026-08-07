@@ -314,3 +314,20 @@ async def refresh_cifst(db: AsyncSession = Depends(get_db)):
     topics = await trend_service.fetch_cifst_articles(db)
     return {"ok": True, "count": len(topics)}
 
+
+
+# ── 中国食品安全网 ──
+
+@router.post("/cfsn/refresh")
+async def refresh_cfsn(db: AsyncSession = Depends(get_db)):
+    """从中国食品安全网抓取新闻。"""
+    topics = await trend_service.fetch_cfsn_articles(db)
+    return {"ok": True, "count": len(topics)}
+
+# ── 科普中国 ──
+
+@router.post("/kepu/refresh")
+async def refresh_kepu(db: AsyncSession = Depends(get_db)):
+    """从科普中国首页抓取大健康文章。"""
+    topics = await trend_service.fetch_kepu_articles(db)
+    return {"ok": True, "count": len(topics)}

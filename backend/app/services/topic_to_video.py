@@ -179,7 +179,7 @@ def _get_crawler_topics() -> list[dict]:
             async with async_session() as db:
                 r = await db.execute(
                     _select(HotTopic).where(
-                        HotTopic.platform.in_(["weixin", "rmw_health", "cifst"])
+                        HotTopic.platform.in_(["weixin", "rmw_health", "cifst", "cfsn", "kepu"])
                     )
                 )
                 rows = r.scalars().all()

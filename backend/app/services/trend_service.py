@@ -539,3 +539,161 @@ async def fetch_cifst_articles(db: AsyncSession) -> list[HotTopic]:
 
     return topics
 
+
+
+# ── 中国食品安全网 ──
+CFSN_LIST_URL = "https://www.cfsn.cn/news/list.html"
+CFSN_PAGES = 5  # 爬取页数
+CFSN_ARTICLE_RE = re.compile(r'href="(/news/detail/\d+/\d+\.html)"[^>]*>([^<]{10,120})</a>')
+CFSN_DATE_RE = re.compile(r'(\d{4}-\d{2}-\d{2})')
+
+async def fetch_cfsn_articles(db: AsyncSession) -> list[HotTopic]:
+    """从中国食品安全网爬取新闻，入库 hot_topics。"""
+    from datetime import datetime, timedelta
+    cutoff = datetime.now() - timedelta(days=3)
+    topics = []
+    seen = set()
+
+    await db.execute(delete(HotTopic).where(HotTopic.platform == "cfsn"))
+    await db.commit()
+
+    for page in range(1, CFSN_PAGES + 1):
+        url = f"{CFSN_LIST_URL}?page={page}"
+        try:
+            resp = _requests.get(url, headers=HEADERS, timeout=15)
+            resp.encoding = "utf-8"
+            resp.raise_for_status()
+            items = CFSN_ARTICLE_RE.findall(resp.text)
+            for path, title in items:
+                title = title.strip()
+                if not title or title in seen:
+                    continue
+                if "detail" not in path:
+                    continue
+                seen.add(title)
+                article_url = f"https://www.cfsn.cn{path}"
+
+                # 尝试从详情页获取日期
+                article_date = None
+                try:
+                    detail_resp = _requests.get(article_url, headers=HEADERS, timeout=10)
+                    detail_resp.encoding = "utf-8"
+                    date_match = CFSN_DATE_RE.search(detail_resp.text)
+                    if date_match:
+                        article_date = datetime.strptime(date_match.group(1), "%Y-%m-%d")
+                except Exception:
+                    pass
+
+                if article_date and article_date < cutoff:
+                    continue
+
+                existing = await db.execute(
+                    select(HotTopic).where(HotTopic.title == title, HotTopic.platform == "cfsn")
+                )
+                if existing.scalar_one_or_none():
+                    continue
+
+                topic = HotTopic(
+                    title=title,
+                    url=article_url,
+                    platform="cfsn",
+                    heat_score=5000,
+                    matched_keywords="",
+                    status=HotTopicStatus.new,
+                )
+                db.add(topic)
+                topics.append(topic)
+        except Exception as e:
+            print(f"[CFSN] page={page} error: {e}")
+
+    if topics:
+        await db.commit()
+        print(f"[CFSN] saved {len(topics)} articles")
+
+    return topics
+
+
+# ── 科普中国 ──
+KEPU_HOME = "https://www.kepuchina.cn/"
+KEPU_ARTICLE_URL = "https://www.kepuchina.cn/article/articleinfo?business_type=100&classify=0&ar_id={ar_id}"
+KEPU_AR_ID_RE = re.compile(r'ar_id=(\d+)')
+KEPU_KEYWORDS = [
+    "食品", "营养", "饮食", "养生", "健康饮食", "膳食", "食品安全",
+    "肠道", "消化", "免疫力", "过敏", "添加剂", "保健品", "食疗",
+    "减肥", "慢病", "三高", "糖尿病", "心血管", "睡眠",
+]
+
+async def fetch_kepu_articles(db: AsyncSession) -> list[HotTopic]:
+    """从科普中国首页爬取大健康相关文章，入库 hot_topics。"""
+    from datetime import datetime, timedelta
+    cutoff = datetime.now() - timedelta(days=3)
+    topics = []
+    seen = set()
+
+    await db.execute(delete(HotTopic).where(HotTopic.platform == "kepu"))
+    await db.commit()
+
+    try:
+        resp = _requests.get(KEPU_HOME, headers=HEADERS, timeout=15)
+        resp.encoding = "utf-8"
+        resp.raise_for_status()
+        ar_ids = list(set(KEPU_AR_ID_RE.findall(resp.text)))
+        print(f"[KEPU] found {len(ar_ids)} article IDs on homepage")
+
+        for ar_id in ar_ids:
+            article_url = KEPU_ARTICLE_URL.format(ar_id=ar_id)
+            try:
+                detail_resp = _requests.get(article_url, headers=HEADERS, timeout=10)
+                detail_resp.encoding = "utf-8"
+                detail_resp.raise_for_status()
+
+                # 提取标题
+                title_match = re.search(r"<title>([^<]+)</title>", detail_resp.text)
+                if not title_match:
+                    continue
+                title = title_match.group(1).strip()
+                # 去掉后缀 " - · 科普中国网"
+                title = re.sub(r"\s*[-·|]\s*科普中国网.*$", "", title).strip()
+                if not title or len(title) < 5 or title in seen:
+                    continue
+
+                # 关键词过滤
+                if not any(kw in title for kw in KEPU_KEYWORDS):
+                    continue
+
+                seen.add(title)
+
+                # 提取日期（无日期则跳过）
+                date_match = re.search(r"(\d{4}/\d{2}/\d{2})", detail_resp.text)
+                if not date_match:
+                    continue
+                article_date = datetime.strptime(date_match.group(1), "%Y/%m/%d")
+                if article_date < cutoff:
+                    continue
+
+                existing = await db.execute(
+                    select(HotTopic).where(HotTopic.title == title, HotTopic.platform == "kepu")
+                )
+                if existing.scalar_one_or_none():
+                    continue
+
+                topic = HotTopic(
+                    title=title,
+                    url=article_url,
+                    platform="kepu",
+                    heat_score=5000,
+                    matched_keywords="",
+                    status=HotTopicStatus.new,
+                )
+                db.add(topic)
+                topics.append(topic)
+            except Exception as e:
+                print(f"[KEPU] ar_id={ar_id} error: {e}")
+    except Exception as e:
+        print(f"[KEPU] homepage error: {e}")
+
+    if topics:
+        await db.commit()
+        print(f"[KEPU] saved {len(topics)} articles")
+
+    return topics
