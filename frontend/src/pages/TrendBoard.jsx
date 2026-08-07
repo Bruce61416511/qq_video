@@ -26,6 +26,7 @@ export default function TrendBoard() {
   const [topicGenerating, setTopicGenerating] = useState(false)
   const [crawlerLoading, setCrawlerLoading] = useState(false)
   const [crawlerResults, setCrawlerResults] = useState({ weixin: [], rmw_health: [], cifst: [], cfsn: [], kepu: [] })
+  const [crawlerTime, setCrawlerTime] = useState(null)
   const [activeTab, setActiveTab] = useState("topics")
   const [topics, setTopics] = useState([])
   const [topicsGeneratedAt, setTopicsGeneratedAt] = useState(null)
@@ -41,11 +42,19 @@ export default function TrendBoard() {
           cfsn: data.filter(t => t.platform === "cfsn"),
           kepu: data.filter(t => t.platform === "kepu"),
         })
+        // 从最新数据的 collected_at 取时间
+        const crawlerPlatforms = ["weixin", "rmw_health", "cifst", "cfsn", "kepu"]
+        const crawlerItems = data.filter(t => crawlerPlatforms.includes(t.platform))
+        if (crawlerItems.length > 0) {
+          const latest = crawlerItems.reduce((a, b) => (a.collected_at > b.collected_at ? a : b))
+          setCrawlerTime(latest.collected_at)
+        }
       }
     } catch (e) { /* ignore */ }
   }
   useEffect(() => {
     if (activeTab === "crawler") loadCrawlerData()
+    if (activeTab === "topics") loadTopics()
   }, [activeTab])
 
   const loadTopics = async () => {
@@ -141,6 +150,7 @@ export default function TrendBoard() {
         const cfsn = data.filter(t => t.platform === "cfsn")
         const kepu = data.filter(t => t.platform === "kepu")
         setCrawlerResults({ weixin: wx, rmw_health: rmw, cifst: cifst, cfsn: cfsn, kepu: kepu })
+        setCrawlerTime(new Date().toLocaleString())
         message.success(`微信热文 ${wx.length} | 人民网 ${rmw.length} | 食科学会 ${cifst.length} | 食品安全网 ${cfsn.length} | 科普中国 ${kepu.length}`)
       }
     } catch (e) {
@@ -255,6 +265,7 @@ export default function TrendBoard() {
           <div style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
             <span style={{ color: "#666", fontSize: 13 }}>
               一键爬取微信热文、人民网健康、食科学会、食品安全网、科普中国
+              {crawlerTime && <span style={{ color: "#aaa", fontSize: 12, marginLeft: 8 }}>上次爬取 {crawlerTime}</span>}
             </span>
             <Button type="primary" icon={<CloudDownloadOutlined />} onClick={handleCrawlAll} loading={crawlerLoading}>
               全部爬取
