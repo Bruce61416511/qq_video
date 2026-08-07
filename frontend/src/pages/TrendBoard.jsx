@@ -25,7 +25,7 @@ export default function TrendBoard() {
   const [topicKey, setTopicKey] = useState(0)
   const [topicGenerating, setTopicGenerating] = useState(false)
   const [crawlerLoading, setCrawlerLoading] = useState(false)
-  const [crawlerResults, setCrawlerResults] = useState({ weixin: [], rmw_health: [], cifst: [] })
+  const [crawlerResults, setCrawlerResults] = useState({ weixin: [], rmw_health: [], cifst: [], cfsn: [], kepu: [] })
   const [activeTab, setActiveTab] = useState("topics")
   const [topics, setTopics] = useState([])
   const [topicsGeneratedAt, setTopicsGeneratedAt] = useState(null)
@@ -38,6 +38,8 @@ export default function TrendBoard() {
           weixin: data.filter(t => t.platform === "weixin"),
           rmw_health: data.filter(t => t.platform === "rmw_health"),
           cifst: data.filter(t => t.platform === "cifst"),
+          cfsn: data.filter(t => t.platform === "cfsn"),
+          kepu: data.filter(t => t.platform === "kepu"),
         })
       }
     } catch (e) { /* ignore */ }
