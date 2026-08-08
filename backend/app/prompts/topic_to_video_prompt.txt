@@ -18,9 +18,9 @@
 | point | ✅ | 各阶段写法见下 |
 | data_point | ❌ | 具体数字（evidence 必填） |
 | sensory | ❌ | 味觉/触觉/视觉形容词（scene 必填），禁止听觉词和场景描述 |
-| visual_hint | ❌ | 具体画面（evidence/scene 必填），禁止"图表展示""动画展示""演示" |
+| visual_hint | ❌ | 具体画面（evidence/scene 必填），禁止"图表展示""动画展示""演示XXX" —— 这是视频分镜不是PPT！ |
 | emotion | ✅ | 递进链：焦虑/好奇→恍然大悟→安心/向往→温暖 |
-| product_moment | ❌ | 产品出现画面（cta 必填） |
+| product_moment | ❌ | 产品出现画面（cta 必填）。禁止"镜头切换到百芙乐放在桌上"这类机械模板，要写自然的动作，如"拧开瓶盖喝一口""从冰箱拿出倒入杯中" |
 
 ### point 写法
 - **hook**：视觉画面+冲突感。✅"暗调客厅，可乐与体检单对比"  ❌"14岁男孩确诊糖尿病"
@@ -45,7 +45,7 @@
     "source_title": "原始热搜标题",
     "source_url": "原始链接",
     "video_topic": "30字以内",
-    "angle": "切入角度",
+    "angle": "从XX角度切入，科普/共鸣/故事/攻略",
     "hook": "黄金3秒",
     "hook_type": "故事冲突型",
     "content_outline": [
