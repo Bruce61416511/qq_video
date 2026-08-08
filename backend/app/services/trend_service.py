@@ -372,8 +372,6 @@ async def fetch_wechat_hot_articles(db: AsyncSession) -> list[HotTopic]:
     """从 tophub.today 爬取微信 24h 热文榜，入库 hot_topics。"""
     topics = []
 
-    await db.execute(delete(HotTopic).where(HotTopic.platform == "weixin"))
-    await db.commit()
     try:
         resp = _requests.get(WECHAT_HOT_URL, headers=HEADERS, timeout=15)
         resp.encoding = "utf-8"
@@ -388,6 +386,13 @@ async def fetch_wechat_hot_articles(db: AsyncSession) -> list[HotTopic]:
                 seen_urls.add(url)
                 unique.append((title.strip(), url, int(itemid)))
 
+        if not unique:
+            return []
+
+        # 清旧数据
+        await db.execute(delete(HotTopic).where(HotTopic.platform == "weixin"))
+        await db.commit()
+
         for title, url, heat in unique[:30]:
             # 去重：检查 title 是否已存在
             existing = await db.execute(
@@ -400,7 +405,7 @@ async def fetch_wechat_hot_articles(db: AsyncSession) -> list[HotTopic]:
                 title=title,
                 url=url,
                 platform="weixin",
-                heat_score=max(0, 10000 - (heat % 10000)),
+                heat_score=int(itemid) % 10000,
                 matched_keywords="",
                 status=HotTopicStatus.new,
             )
@@ -426,8 +431,6 @@ async def fetch_rmw_health_articles(db: AsyncSession) -> list[HotTopic]:
     """从人民网健康频道滚动新闻页抓取文章，入库 hot_topics。"""
     topics = []
 
-    await db.execute(delete(HotTopic).where(HotTopic.platform == "rmw_health"))
-    await db.commit()
     try:
         resp = _requests.get(RMW_HEALTH_URL, headers=HEADERS, timeout=15)
         resp.encoding = "utf-8"
@@ -490,9 +493,8 @@ async def fetch_cifst_articles(db: AsyncSession) -> list[HotTopic]:
     cutoff = datetime.now() - timedelta(days=3)
     topics = []
     seen = set()
+    _deleted = False
 
-    await db.execute(delete(HotTopic).where(HotTopic.platform == "cifst"))
-    await db.commit()
     for cifst_url in CIFST_URLS:
         try:
             resp = _requests.get(cifst_url, headers=HEADERS, timeout=15)
@@ -514,6 +516,10 @@ async def fetch_cifst_articles(db: AsyncSession) -> list[HotTopic]:
                         continue
                 seen.add(title)
                 url = f"https://www.cifst.org.cn{path}"
+                if not _deleted:
+                    _deleted = True
+                    await db.execute(delete(HotTopic).where(HotTopic.platform == "cifst"))
+                    await db.commit()
                 existing = await db.execute(
                     select(HotTopic).where(HotTopic.title == title, HotTopic.platform == "cifst")
                 )
@@ -601,12 +607,14 @@ async def fetch_cfsn_articles(db: AsyncSession) -> list[HotTopic]:
                     matched_keywords="",
                     status=HotTopicStatus.new,
                 )
-                db.add(topic)
                 topics.append(topic)
         except Exception as e:
             print(f"[CFSN] page={page} error: {e}")
 
     if topics:
+        await db.execute(delete(HotTopic).where(HotTopic.platform == "cfsn"))
+        for topic in topics:
+            db.add(topic)
         await db.commit()
         print(f"[CFSN] saved {len(topics)} articles")
 
@@ -639,6 +647,9 @@ async def fetch_kepu_articles(db: AsyncSession) -> list[HotTopic]:
         resp.raise_for_status()
         ar_ids = list(set(KEPU_AR_ID_RE.findall(resp.text)))
         print(f"[KEPU] found {len(ar_ids)} article IDs on homepage")
+
+        if not ar_ids:
+            return []
 
         for ar_id in ar_ids:
             article_url = KEPU_ARTICLE_URL.format(ar_id=ar_id)
@@ -685,7 +696,6 @@ async def fetch_kepu_articles(db: AsyncSession) -> list[HotTopic]:
                     matched_keywords="",
                     status=HotTopicStatus.new,
                 )
-                db.add(topic)
                 topics.append(topic)
             except Exception as e:
                 print(f"[KEPU] ar_id={ar_id} error: {e}")
@@ -693,6 +703,9 @@ async def fetch_kepu_articles(db: AsyncSession) -> list[HotTopic]:
         print(f"[KEPU] homepage error: {e}")
 
     if topics:
+        await db.execute(delete(HotTopic).where(HotTopic.platform == "kepu"))
+        for topic in topics:
+            db.add(topic)
         await db.commit()
         print(f"[KEPU] saved {len(topics)} articles")
 

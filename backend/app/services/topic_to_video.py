@@ -246,7 +246,7 @@ def generate():
                 {"role": "user", "content": user_content},
             ],
             temperature=0.7,
-            max_tokens=3000,
+            max_tokens=6000,
         )
 
         content = response.choices[0].message.content

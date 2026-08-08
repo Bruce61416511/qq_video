@@ -135,13 +135,13 @@ export default function TrendBoard() {
   const handleCrawlAll = async () => {
     setCrawlerLoading(true)
     try {
-      const results = await Promise.all([
-        trendsApi.refreshWechat().catch(e => ({ ok: false, count: 0, error: e.message })),
-        trendsApi.refreshRmwHealth().catch(e => ({ ok: false, count: 0, error: e.message })),
-        trendsApi.refreshCifst().catch(e => ({ ok: false, count: 0, error: e.message })),
-        trendsApi.refreshCfsn().catch(e => ({ ok: false, count: 0, error: e.message })),
-        trendsApi.refreshKepu().catch(e => ({ ok: false, count: 0, error: e.message })),
-      ])
+      // 串行调用，避免 SQLite 并发写锁冲突
+      const safeCall = (fn) => fn().catch(e => ({ ok: false, count: 0, error: e.message }))
+      await safeCall(trendsApi.refreshWechat)
+      await safeCall(trendsApi.refreshRmwHealth)
+      await safeCall(trendsApi.refreshCifst)
+      await safeCall(trendsApi.refreshCfsn)
+      await safeCall(trendsApi.refreshKepu)
       const data = await trendsApi.list(null, 500)
       if (Array.isArray(data)) {
         const wx = data.filter(t => t.platform === "weixin")
