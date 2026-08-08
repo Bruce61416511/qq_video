@@ -223,7 +223,7 @@ export default function TextToVideo() {
     if (selectedTopic) {
       setShotsLoading(true)
       try {
-        const topicWithTemplate = { ...selectedTopic }
+        const topicWithTemplate = { ...selectedTopic, shot_count: shotCount, shot_duration: shotDuration }
         if (selectedTemplateId) {
           const tpl = competitorTemplates.find(t => t.id === selectedTemplateId)
           if (tpl) topicWithTemplate.competitor_framework = tpl.framework
@@ -602,7 +602,7 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
                   <span style={{ color: '#555' }}>{selectedTopic.target_emotion}</span>
                 </div>
               )}
-              {selectedTopic.product_link && selectedTopic.product_link !== '纯养号内容暂不植入' && (
+              {selectedTopic.product_link && (
                 <div style={{ display: 'flex', marginBottom: 2 }}>
                   <span style={{ color: '#888', width: 56, flexShrink: 0 }}>产品</span>
                   <span style={{ color: '#555' }}>{selectedTopic.product_link}</span>
@@ -1026,7 +1026,7 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
                   <span style={{ color: '#555' }}>{selectedTopic.target_emotion}</span>
                 </div>
               )}
-              {selectedTopic.product_link && selectedTopic.product_link !== '纯养号内容暂不植入' && (
+              {selectedTopic.product_link && (
                 <div style={{ display: 'flex', marginBottom: 2 }}>
                   <span style={{ color: '#888', width: 56, flexShrink: 0 }}>产品</span>
                   <span style={{ color: '#555' }}>{selectedTopic.product_link}</span>

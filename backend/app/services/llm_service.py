@@ -484,6 +484,31 @@ async def generate_shot_plan_from_topic(
     return _fallback_topic_shots(hook, content_outline, hook_dur, mid_dur, end_dur)
 
 
+def _validate_voice_duration(shots: list[dict]):
+    """校验 voice_script 字数是否匹配 duration，超出范围自动修正。"""
+    for i, s in enumerate(shots):
+        dur = int(s.get("duration", 5))
+        script = s.get("voice_script", "")
+        char_count = len(script.replace(" ", ""))
+        expected_min = dur * 3
+        expected_max = dur * 5
+        if char_count > expected_max:
+            # Too long: truncate to fit duration
+            target_len = dur * 4
+            while len(script.replace(" ", "")) > target_len + 2:
+                script = script.replace("，", ",", 1) if "，" in script and len(script.replace(" ", "")) > target_len + 5 else script
+            # Simple truncation at sentence boundary
+            if len(script.replace(" ", "")) > target_len + 3:
+                parts = script.split("。")
+                if len(parts) > 1:
+                    script = "。".join(parts[:-1]) + "。"
+                elif len(script.replace(" ", "")) > target_len + 5:
+                    script = script[:int(len(script) * target_len / char_count)] + "..."
+            s["voice_script"] = script
+            print(f"[Validate] Shot {i+1}: truncated voice_script from {char_count} to {len(script.replace(' ', ''))} chars (dur={dur}s)")
+        elif char_count < expected_min and char_count > 0:
+            print(f"[Validate] Shot {i+1}: voice_script too short ({char_count} chars for {dur}s), consider manual adjustment")
+
 def _fallback_topic_shots(hook, outline, hook_dur, mid_dur, end_dur):
     """LLM 不可用时的降级模板。"""
     shots = []

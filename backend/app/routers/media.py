@@ -82,6 +82,9 @@ async def get_shots(media_id: int, db: AsyncSession = Depends(get_db)):
 async def generate_shots_from_topic(data: dict = Body(...)):
     """从选题结构化数据生成分镜方案。"""
     from ..services.llm_service import generate_shot_plan_from_topic, TOPIC_SHOT_PROMPT, build_topic_user_message
+    shot_count = int(data.get("shot_count", 0))
+    shot_duration = int(data.get("shot_duration", 0))
+    total_duration = shot_count * shot_duration if shot_count and shot_duration else data.get("duration", 45)
     shots = await generate_shot_plan_from_topic(
         video_topic=data.get("video_topic", ""),
         angle=data.get("angle", ""),
@@ -90,7 +93,7 @@ async def generate_shots_from_topic(data: dict = Body(...)):
         content_outline=data.get("content_outline", []),
         target_emotion=data.get("target_emotion", ""),
         product_link=data.get("product_link", ""),
-        total_duration=data.get("duration", 45),
+        total_duration=total_duration,
         competitor_framework=data.get("competitor_framework", ""),
     )
     return {"shots": shots}
