@@ -1,4 +1,4 @@
-﻿import os
+import os
 import uuid
 import asyncio
 import traceback
@@ -81,7 +81,7 @@ async def get_shots(media_id: int, db: AsyncSession = Depends(get_db)):
 @router.post("/generate-shots-from-topic")
 async def generate_shots_from_topic(data: dict = Body(...)):
     """从选题结构化数据生成分镜方案。"""
-    from ..services.llm_service import generate_shot_plan_from_topic, TOPIC_SHOT_PROMPT, build_topic_user_message
+    from ..services.llm_service import generate_shot_plan_from_topic, TOPIC_SHOT_PROMPT, build_topic_user_message, _format_outline_text
     shot_count = int(data.get("shot_count", 0))
     shot_duration = int(data.get("shot_duration", 0))
     total_duration = shot_count * shot_duration if shot_count and shot_duration else data.get("duration", 45)
@@ -102,7 +102,7 @@ async def generate_shots_from_topic(data: dict = Body(...)):
 @router.post("/generate-shots-preview")
 async def generate_shots_preview(data: dict = Body(...)):
     """Preview the system prompt and user message sent to LLM, without actual call."""
-    from ..services.llm_service import TOPIC_SHOT_PROMPT, SYSTEM_PROMPT, build_topic_user_message, _parse_competitor_framework
+    from ..services.llm_service import TOPIC_SHOT_PROMPT, SYSTEM_PROMPT, build_topic_user_message, _parse_competitor_framework, _format_outline_text
     import json as _json
 
     video_topic = data.get("video_topic", "")
@@ -118,13 +118,14 @@ async def generate_shots_preview(data: dict = Body(...)):
     outline_count = len(content_outline) if content_outline else 0
     if outline_count == 0:
         outline_count = 3
-    shot_count = outline_count + 2
+    is_structured = content_outline and isinstance(content_outline[0], dict)
+    shot_count = outline_count if is_structured else outline_count + 2
     base_dur = max(3, total_duration // shot_count)
     hook_dur = min(base_dur, 5)
     end_dur = base_dur
     mid_dur = (total_duration - hook_dur - end_dur) // outline_count if outline_count > 0 else base_dur
 
-    outline_text = "\n".join(f"{i+1}. {o}" for i, o in enumerate(content_outline)) if content_outline else "None"
+    outline_text = _format_outline_text(content_outline)
 
     # Manual mode (no hook_type) uses SYSTEM_PROMPT; topic mode uses TOPIC_SHOT_PROMPT
     is_manual = not hook_type

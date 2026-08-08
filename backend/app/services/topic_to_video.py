@@ -1,4 +1,4 @@
-﻿"""热搜 → 视频选题转换服务。"""
+"""热搜 → 视频选题转换服务。"""
 import json
 import re
 import sqlite3
@@ -114,7 +114,21 @@ body{{font-family:-apple-system,sans-serif;padding:40px;text-align:center;color:
         emotion = t.get("target_emotion", "")
         duration = t.get("duration", "--")
 
-        outline_html = "".join(f"<li>{o}</li>" for o in outline) if outline else ""
+                if outline:
+            if isinstance(outline[0], dict):
+                outline_html = ""
+                for o in outline:
+                    stage = o.get("stage", "")
+                    if stage == "hook":
+                        continue
+                    point = o.get("point", "")
+                    label = {"evidence": "证据", "scene": "场景", "cta": "行动"}.get(stage, stage)
+                    outline_html += f'<li><span style="color:#999;font-size:12px">{label}</span> {point}</li>'
+            else:
+                outline_html = "".join(f"<li>{o}</li>" for o in outline)
+        else:
+            outline_html =         else:
+            outline_html = ""
         cards.append(f"""
         <div class="card">
             <div class="card-header">

@@ -1,4 +1,4 @@
-﻿"""
+"""
 LLM 分镜策划服务
 参考 MoneyPrinterTurbo: app/services/llm.py
 支持 OpenAI / DeepSeek / 通义千问 / 智谱 等兼容接口
@@ -17,6 +17,39 @@ LLM_BASE_URLS = {
 }
 
 PROMPT_DIR = Path(__file__).parent.parent / "prompts"
+
+_STAGE_LABELS = {
+    "hook": "钩子",
+    "evidence": "证据",
+    "scene": "场景",
+    "cta": "CTA",
+}
+
+def _format_outline_text(outline: list) -> str:
+    """Format content_outline for LLM user message.
+    Handles both old string[] format and new structured object[] format."""
+    if not outline:
+        return "无"
+    lines = []
+    for i, item in enumerate(outline):
+        if isinstance(item, str):
+            lines.append(f"{i+1}. {item}")
+        elif isinstance(item, dict):
+            stage = item.get("stage", "")
+            point = item.get("point", "")
+            stage_label = _STAGE_LABELS.get(stage, stage)
+            lines.append(f"镜{i+1} ({stage_label}): {point}")
+            if item.get("data_point"):
+                lines.append(f"  数据: {item['data_point']}")
+            if item.get("sensory"):
+                lines.append(f"  感官: {item['sensory']}")
+            if item.get("visual_hint"):
+                lines.append(f"  画面暗示: {item['visual_hint']}")
+            if item.get("emotion"):
+                lines.append(f"  情绪: {item['emotion']}")
+            if item.get("product_moment"):
+                lines.append(f"  产品植入: {item['product_moment']}")
+    return "\n".join(lines)
 
 def _load_prompt(filename: str, fallback: str) -> str:
     """从配置文件读取提示词，文件不存在时使用硬编码兜底。"""
@@ -295,7 +328,9 @@ async def generate_shot_plan_from_topic(
     if outline_count == 0:
         outline_count = 3
 
-    shot_count = outline_count + 2  # 开头 + N个要点 + 结尾
+    # Structured outlines (dicts) already include hook+cta; legacy strings need +2 wrappers
+    is_structured = content_outline and isinstance(content_outline[0], dict)
+    shot_count = outline_count if is_structured else outline_count + 2
     base_dur = max(3, total_duration // shot_count)
     hook_dur = min(base_dur, 5)  # 黄金3秒不超过5秒
     end_dur = base_dur
@@ -303,7 +338,7 @@ async def generate_shot_plan_from_topic(
 
     prompt = TOPIC_SHOT_PROMPT.replace("{hook_dur}", str(hook_dur)).replace("{mid_dur}", str(mid_dur)).replace("{end_dur}", str(end_dur))
 
-    outline_text = "\n".join(f"{i+1}. {o}" for i, o in enumerate(content_outline)) if content_outline else "无"
+    outline_text = _format_outline_text(content_outline)
 
     # Build inline style directives so LLM cannot skip them
     _hook_style = {

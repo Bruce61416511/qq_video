@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { Tabs, Card, Button, Space, App, Switch, Tag, Drawer, Input, List, Typography } from "antd"
 import {
@@ -357,29 +357,37 @@ export default function TrendBoard() {
                     </div>
                   )}
                   <div style={{ display: 'flex', marginBottom: 2 }}>
+                    <span style={{ color: '#888', width: 56, flexShrink: 0 }}>角度</span>
+                    <span style={{ color: '#555' }}>{t.angle}</span>
+                  </div>
+                  <div style={{ display: 'flex', marginBottom: 2 }}>
                     <span style={{ color: '#888', width: 56, flexShrink: 0 }}>钩子</span>
                     <span>
                       {t.hook_type && <Tag color="orange" style={{fontSize:10}}>{t.hook_type}</Tag>}
                       <span style={{color:'#e67e22',fontWeight:500}}>{t.hook}</span>
                     </span>
                   </div>
-                  <div style={{ display: 'flex', marginBottom: 2 }}>
-                    <span style={{ color: '#888', width: 56, flexShrink: 0 }}>角度</span>
-                    <span style={{ color: '#555' }}>{t.angle}</span>
-                  </div>
-                  {t.content_outline?.length > 0 && (
-                    <div style={{ display: 'flex', marginBottom: 2 }}>
-                      <span style={{ color: '#888', width: 56, flexShrink: 0 }}>要点</span>
-                      <span>
-                        {t.content_outline.map((p, j) => (
-                          <div key={j} style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: 1 }}>
-                            <span style={{ width: 4, height: 4, borderRadius: 2, background: '#888', flexShrink: 0, marginTop: 7 }} />
-                            <span style={{ color: '#333' }}>{p}</span>
-                          </div>
-                        ))}
-                      </span>
-                    </div>
-                  )}
+                  {t.content_outline?.length > 0 && (() => {
+                    const items = t.content_outline.filter(p => typeof p !== 'object' || p.stage !== 'hook')
+                    if (!items.length) return null
+                    return (
+                      <div style={{ display: 'flex', marginBottom: 2 }}>
+                        <span style={{ color: '#888', width: 56, flexShrink: 0 }}>要点</span>
+                        <span>
+                          {items.map((p, j) => {
+                            const isObj = typeof p === 'object' && p !== null
+                            const label = isObj ? { evidence: '证据', scene: '场景', cta: '行动' }[p.stage] || '' : ''
+                            return (
+                              <div key={j} style={{ marginBottom: 1 }}>
+                                {isObj && <span style={{ color: '#aaa', marginRight: 6 }}>{label}</span>}
+                                <span style={{ color: '#555' }}>{isObj ? p.point : p}</span>
+                              </div>
+                            )
+                          })}
+                        </span>
+                      </div>
+                    )
+                  })()}
                   {t.target_emotion && (
                     <div style={{ display: 'flex', marginBottom: 2 }}>
                       <span style={{ color: '#888', width: 56, flexShrink: 0 }}>情绪</span>
