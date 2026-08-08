@@ -114,7 +114,8 @@ body{{font-family:-apple-system,sans-serif;padding:40px;text-align:center;color:
         emotion = t.get("target_emotion", "")
         duration = t.get("duration", "--")
 
-                if outline:
+
+        if outline:
             if isinstance(outline[0], dict):
                 outline_html = ""
                 for o in outline:
@@ -127,7 +128,6 @@ body{{font-family:-apple-system,sans-serif;padding:40px;text-align:center;color:
             else:
                 outline_html = "".join(f"<li>{o}</li>" for o in outline)
         else:
-            outline_html =         else:
             outline_html = ""
         cards.append(f"""
         <div class="card">
