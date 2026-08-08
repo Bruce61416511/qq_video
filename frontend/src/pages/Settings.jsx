@@ -18,7 +18,7 @@ const SETTING_KEYS = {
   video_service: { label: '视频生成服务', section: 'video' },
   video_model: { label: '视频模型', section: 'video' },
   video_api_key: { label: '视频 API Key', section: 'video' },
-  video_api_secret: { label: '视频 API Secret', section: 'video' },
+  video_api_secret: { label: '视频 百炼 WorkSpace ID', section: 'video' },
 }
 
 
@@ -62,7 +62,7 @@ function getLLMModelOptions(service) {
 
 const VIDEO_MODEL_BY_SERVICE = {
   wan: [
-    { value: 'wanx2.1-t2v-plus', label: 'wanx2.1-t2v-plus (推荐)' },
+    { value: 'wan2.7-t2v', label: 'wan2.7-t2v (推荐)' },
   ],
   kling: [
     { value: 'kling-v1', label: 'kling-v1' },
@@ -172,10 +172,10 @@ function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, service
       {hasSecret && (
         <div>
           <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>
-            API Secret <span style={{ color: '#8c8c8c', fontWeight: 400 }}>（选填）</span>
+            {SETTING_KEYS[secretKey]?.label || 'API Secret'} <span style={{ color: '#8c8c8c', fontWeight: 400 }}>（选填）</span>
           </span>
           <Input.Password
-            placeholder="输入 API Secret"
+            placeholder={`输入 ${SETTING_KEYS[secretKey]?.label || "API Secret"}`}
             disabled={locked}
             value={config[secretKey]?.value || ''}
             onChange={e => setConfig(prev => ({ ...prev, [secretKey]: { ...prev[secretKey], value: e.target.value } }))}

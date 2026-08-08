@@ -38,7 +38,7 @@ def _generate_ass(clips: list[dict]):
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        "Style: Default,SimHei,48,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,4,2,2,10,10,80,1",
+        "Style: Default,SimHei,28,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,4,2,2,10,10,80,1",
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -85,7 +85,8 @@ async def _merge_single(clip: dict, output_path: str, size: str, resolution: str
         audio_map = ["-map", "0:a?"]
     if ass_file:
         ass_path_fixed = ass_file.replace("\\", "/")
-        filter_complex.append(f"[vout]ass={chr(39)}{ass_path_fixed}{chr(39)}[vfinal]")
+        ass_escaped = ass_path_fixed.replace(":", "\\:")
+        filter_complex.append(f"[vout]ass=filename='{ass_escaped}'[vfinal]")
         video_out = "[vfinal]"
     else:
         video_out = "[vout]"
@@ -119,9 +120,9 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
                 filter_parts.append(f"[{ai}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{ai}]")
                 has_audio = True
             else:
-                dur = c.get("duration", 5)
-                filter_parts.append(f"anullsrc=r=44100:cl=stereo:d={dur}[anull{vi}]")
+                filter_parts.append(f"[{vi}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{vi}]")
                 a_indices.append(vi)
+                has_audio = True
         n = len(v_indices)
         v_concat = "".join(f"[v{vi}]" for vi in v_indices)
         filter_parts.append(f"{v_concat}concat=n={n}:v=1:a=0[vout]")
@@ -133,7 +134,8 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
         filter_parts.append(f"{a_concat}concat=n={n}:v=0:a=1[aout]")
         if ass_file:
             ass_path_fixed = ass_file.replace("\\", "/")
-            filter_parts.append(f"[vout]ass='{ass_path_fixed}'[vfinal]")
+            ass_escaped = ass_path_fixed.replace(":", "\\:")
+            filter_parts.append(f"[vout]ass=filename='{ass_escaped}'[vfinal]")
             video_out = "[vfinal]"
         else:
             video_out = "[vout]"
@@ -150,8 +152,8 @@ async def _run_ffmpeg(cmd: list, output_path: str) -> dict:
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
         if proc.returncode != 0:
-            print(f"[Composer] ffmpeg error: {proc.stderr[:500]}")
-            return {"ok": False, "error": f"ffmpeg failed: {proc.stderr[:200]}"}
+            print(f"[Composer] ffmpeg error: {proc.stderr[-800:]}")
+            return {"ok": False, "error": f"ffmpeg failed: {proc.stderr[-300:]}"}
         if os.path.exists(output_path):
             import json
             probe = subprocess.run(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", output_path], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)

@@ -434,16 +434,34 @@ async def _download_video(url: str, media_id: int, shot_index: int) -> str:
 
 async def _create_placeholder_clip(prompt: str, duration: str, size: str) -> str:
     """Create a placeholder video clip (black screen with text) using ffmpeg."""
+    import platform, re as _re
     try:
         output = str(UPLOAD_DIR / f"placeholder_{uuid.uuid4().hex[:8]}.mp4")
-        safe_prompt = prompt[:80].replace(":", "\\:").replace("'", "\\'").replace(",", "\\,")
+        safe_prompt = _re.sub(r'[^\w\u4e00-\u9fff\u3000-\u303f\uff00-\uffef,;:!?.()（） ]', '', prompt[:80])
+        if not safe_prompt.strip():
+            safe_prompt = "placeholder"
         size_map = {"9:16": "1080x1920", "16:9": "1920x1080", "1:1": "1080x1080"}
         res = size_map.get(size, "1080x1920")
 
+        font_file = ""
+        if platform.system() == "Windows":
+            for f in ["C:/Windows/Fonts/simhei.ttf", "C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/arial.ttf"]:
+                if os.path.exists(f):
+                    font_file = f.replace("\\", "/").replace(":", "\\:")
+                    break
+        elif platform.system() == "Darwin":
+            font_file = "/System/Library/Fonts/PingFang.ttc"
+        else:
+            for f in ["/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"]:
+                if os.path.exists(f):
+                    font_file = f
+                    break
+
+        ff_font = f"fontfile='{font_file}':" if font_file else ""
         cmd = [
             "ffmpeg", "-y",
             "-f", "lavfi",
-            "-i", f"color=color=0x1a1a2e:size={res}:rate=24:duration={duration},drawtext=text='{safe_prompt}':fontcolor=white:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2",
+            "-i", f"color=color=0x1a1a2e:size={res}:rate=24:duration={duration},{ff_font}drawtext=text='{safe_prompt}':fontcolor=white:fontsize=32:x=(w-text_w)/2:y=(h-text_h)/2",
             "-c:v", "libx264", "-preset", "ultrafast",
             "-movflags", "+faststart",
             output,
@@ -454,16 +472,17 @@ async def _create_placeholder_clip(prompt: str, duration: str, size: str) -> str
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            await asyncio.wait_for(proc.communicate(), timeout=30)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
+        if not os.path.exists(output) and stderr:
+            print(f"[Pipeline] ffmpeg stderr: {stderr.decode('utf-8', errors='replace')[:300]}")
         if os.path.exists(output):
             return output
     except Exception as e:
         print(f"[Pipeline] placeholder error: {e}")
     return ""
-
 
 
 # ====== background shot generation ======

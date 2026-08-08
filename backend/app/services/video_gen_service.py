@@ -8,7 +8,7 @@ import httpx
 from ..config import get_setting
 
 _VIDEO_MODEL_DEFAULTS = {
-    "wan": "wanx2.1-t2v-plus",
+    "wan": "wan2.7-t2v",
     "kling": "kling-v1",
     "jimeng": "jimeng-t2v",
     "runway": "gen3a_turbo",
@@ -117,38 +117,55 @@ async def _runway_generate(prompt: str, duration: str, size: str, resolution: st
 
 
 async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, model: str, api_key: str, api_secret: str, progress_callback=None):
-    """Wan-2.1 via Alibaba Bailian (DashScope) API.
-    Model: configurable via Settings (default: wanx2.1-t2v-plus)
+    """Wan-2.7 via Alibaba Bailian API.
+    Model: wan2.7-t2v
     Flow: create task -> poll status -> get video URL -> download
     """
-    # Use service-specific fallback if no model explicitly set
-    wan_model = model or _video_model_for("wan")
+    wan_model = (model or _video_model_for("wan")).lower()
 
-    # Map size to aspect ratio for Wan
+    # api_secret is used as workspace ID for Bailian endpoint
+    workspace_id = api_secret or ""
+    if not workspace_id:
+        return {"status": "error", "service": "wan", "message": "missing workspace_id (set video_api_secret)"}
+
+    # Build Bailian API base URL
+    base_url = f"https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1"
+
+    # Map size to ratio
     ratio_map = {"9:16": "9:16", "16:9": "16:9", "1:1": "1:1"}
-    aspect = ratio_map.get(size, "9:16")
-    
+    ratio = ratio_map.get(size, "9:16")
+
+    # Map resolution (720P / 1080P)
+    res = resolution if resolution in ("720P", "1080P") else "720P"
+
+    # Map duration
     duration_map = {"3": 3, "5": 5, "10": 10, "15": 15, "30": 30}
     dur = duration_map.get(duration, 5)
-    if dur > 10:
-        dur = 10  # wanx2.1 max ~10s per call; longer shots split upstream
-    
+    if dur > 15:
+        dur = 15
+    if dur < 5:
+        dur = 5
+
     async with httpx.AsyncClient(timeout=300.0) as client:
         # Step 1: Create video generation task
         create_body = {
             "model": wan_model,
             "input": {
                 "prompt": prompt,
-                "duration": dur,
             },
             "parameters": {
-                "size": "1280*720" if size == "16:9" else ("720*1280" if size == "9:16" else "1024*1024"),
+                "resolution": res,
+                "ratio": ratio,
                 "prompt_extend": True,
+                "watermark": True,
+                "duration": dur,
             },
         }
-        
+
+        print(f"[VideoGen] Wan create: model={wan_model}, res={res}, ratio={ratio}, dur={dur}s")
+
         create_resp = await client.post(
-            "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+            f"{base_url}/services/aigc/video-generation/video-synthesis",
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
@@ -156,21 +173,21 @@ async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, 
             },
             json=create_body,
         )
-        
+
         if create_resp.status_code != 200:
-            error_text = create_resp.text[:300]
+            error_text = create_resp.text[:500]
             print(f"[VideoGen] Wan create error: {error_text}")
             return {"status": "error", "service": "wan", "message": error_text}
-        
+
         create_data = create_resp.json()
         task_id = create_data.get("output", {}).get("task_id", "")
-        
+
         if not task_id:
             print(f"[VideoGen] Wan: no task_id in response: {create_data}")
             return {"status": "error", "service": "wan", "message": "no task_id"}
-        
+
         print(f"[VideoGen] Wan task created: {task_id}")
-        
+
         # Step 2: Poll for completion
         for attempt in range(60):  # max ~10 min with 10s interval
             await asyncio.sleep(10)
@@ -178,16 +195,16 @@ async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, 
                 pct = min(99, int((attempt + 1) / 60 * 100))
                 await progress_callback(pct)
             poll_resp = await client.get(
-                f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}",
+                f"{base_url}/tasks/{task_id}",
                 headers={"Authorization": f"Bearer {api_key}"},
             )
-            
+
             if poll_resp.status_code != 200:
                 continue
-                
+
             poll_data = poll_resp.json()
             status = poll_data.get("output", {}).get("task_status", "")
-            
+
             if status == "SUCCEEDED":
                 video_url = poll_data.get("output", {}).get("video_url", "")
                 print(f"[VideoGen] Wan done: {video_url[:60]}...")
@@ -196,10 +213,10 @@ async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, 
                 msg = poll_data.get("output", {}).get("message", "unknown error")
                 print(f"[VideoGen] Wan failed: {msg}")
                 return {"status": "error", "service": "wan", "message": msg}
-            
+
             if attempt % 3 == 0:
                 print(f"[VideoGen] Wan polling... attempt {attempt+1}, status={status}")
-        
+
         return {"status": "timeout", "service": "wan", "task_id": task_id}
 
 
