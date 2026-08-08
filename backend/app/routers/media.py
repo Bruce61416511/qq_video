@@ -176,7 +176,7 @@ async def generate_shots(data: dict = Body(...)):
     competitor_framework = data.get("competitor_framework", "")
 
     count = max(1, min(int(shot_count), 10))
-    dur = str(shot_duration) if str(shot_duration) in ("3","5","10","15","30") else "5"
+    dur = str(shot_duration) if str(shot_duration) in ("3","5","10","15","30","60") else "5"
 
     shots = await generate_shot_plan(topic, count, dur, competitor_framework)
     # Ensure duration is set on each shot

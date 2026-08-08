@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+﻿import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Steps, Input, Button, Card, App, Select, Tabs, Drawer, List, Modal,
@@ -180,7 +180,7 @@ export default function TextToVideo() {
     setSelectedTopic(t)
     // Auto-calculate
     const outlineLen = t.content_outline?.length || 3
-    const totalDur = t.duration || 45
+    const totalDur = parseInt(t.duration) || 30
     setShotCount(outlineLen + 2)
     setShotDuration(String(Math.max(3, Math.floor(totalDur / (outlineLen + 2)))))
   }
@@ -610,7 +610,7 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
               )}
               <div style={{ display: 'flex' }}>
                 <span style={{ color: '#888', width: 56, flexShrink: 0 }}>时长</span>
-                <span>{selectedTopic.duration || 45}s · 自动拆 {shotCount} 镜 · 每镜 {shotDuration}s</span>
+                <span>自动拆 {shotCount} 镜</span>
               </div>
             </div>
           </Card>
@@ -625,6 +625,20 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
               <Select value={resolution} onChange={setResolution} options={RESOLUTION_OPTIONS} style={{ width: 100 }} />
             </div>
           </Space>
+            {selectedTopic && (
+              <Space size="middle" wrap style={{ marginTop: 12 }}>
+                <div>
+                  <span style={{ fontWeight: 600, fontSize: 13, display: "block", marginBottom: 4 }}>分镜数量</span>
+                  <Select value={shotCount} onChange={setShotCount}
+                    options={[1,2,3,4,5,6,7,8,9,10].map(n => ({ value: n, label: n + " 镜" }))}
+                    style={{ width: 80 }} />
+                </div>
+                <div>
+                  <span style={{ fontWeight: 600, fontSize: 13, display: "block", marginBottom: 4 }}>每镜时长</span>
+                  <Select value={shotDuration} onChange={setShotDuration} options={DURATION_OPTIONS} style={{ width: 80 }} />
+                </div>
+              </Space>
+            )}
           </>
           )}
           {/* 竞品模板参考（手动+选题均可使用） */}
@@ -1020,7 +1034,7 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
               )}
               <div style={{ display: 'flex' }}>
                 <span style={{ color: '#888', width: 56, flexShrink: 0 }}>时长</span>
-                <span>{selectedTopic.duration || 45}s · 自动拆 {shotCount} 镜 · 每镜 {shotDuration}s</span>
+                <span>自动拆 {shotCount} 镜</span>
               </div>
             </div>
           </Card>

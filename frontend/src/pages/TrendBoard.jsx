@@ -339,7 +339,6 @@ export default function TrendBoard() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: 14, fontWeight: 600 }}>{t.video_topic}</span>
-                    <span style={{ fontSize: 11, color: '#888' }}>{t.duration || 30}s</span>
                   </div>
                   <Button
                     type="primary"

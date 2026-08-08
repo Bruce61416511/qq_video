@@ -112,7 +112,7 @@ body{{font-family:-apple-system,sans-serif;padding:40px;text-align:center;color:
         outline = t.get("content_outline", [])
         product_link = t.get("product_link", "")
         emotion = t.get("target_emotion", "")
-        duration = t.get("duration", 30)
+        duration = t.get("duration", "--")
 
         outline_html = "".join(f"<li>{o}</li>" for o in outline) if outline else ""
         cards.append(f"""
