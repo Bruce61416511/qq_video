@@ -25,7 +25,18 @@ async def compose_video(
 
 
 def _generate_ass(clips: list[dict]):
-    """Generate ASS subtitle file. Returns path or None."""
+    """Generate ASS subtitle file.
+    
+    Subtitles are split by fixed character count (default 12 chars/line),
+    displayed at normal Chinese speaking speed (~4.5 chars/s).
+    If subtitles run shorter than the video clip, a gap is left (no stretching).
+    If subtitles exceed the clip, they extend into the next clip's time.
+    
+    Returns path or None.
+    """
+    chars_per_line = 12
+    chars_per_second = 4.5
+    
     has_any = any(c.get("subtitle", "").strip() for c in clips)
     if not has_any:
         return None
@@ -38,7 +49,7 @@ def _generate_ass(clips: list[dict]):
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        "Style: Default,SimHei,28,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,4,2,2,10,10,80,1",
+        "Style: Default,SimHei,10,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,4,2,2,10,10,80,1",
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -47,18 +58,60 @@ def _generate_ass(clips: list[dict]):
     cumulative = 0.0
     for c in clips:
         sub_text = c.get("subtitle", "").strip()
-        dur = float(c.get("duration", 5))
+        # Use actual video duration for subtitle timing, fallback to declared duration
+        clip_dur = _probe_duration(c.get("video_path", ""))
+        if clip_dur <= 0:
+            clip_dur = float(c.get("duration", 5))
+        # Each shot's subtitles start at the shot's boundary (trim overflow from previous shot)
+        clip_start = cumulative
+        shot_time = 0.0  # local time within this shot
         if sub_text:
-            start = _ass_time(cumulative)
-            end = _ass_time(cumulative + dur)
-            lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{sub_text}")
-        cumulative += dur
+            segments = _split_by_chars(sub_text, chars_per_line)
+            total_chars = sum(len(s) for s in segments)
+            if total_chars > 0:
+                for seg in segments:
+                    seg_dur = len(seg) / chars_per_second
+                    # Stop if we exceed the clip's video duration
+                    if shot_time + seg_dur > clip_dur:
+                        break
+                    start = _ass_time(clip_start + shot_time)
+                    end = _ass_time(clip_start + shot_time + seg_dur)
+                    lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{seg}")
+                    shot_time += seg_dur
+        cumulative = clip_start + clip_dur
 
     with open(ass_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     return ass_path
 
 
+def _split_by_chars(text: str, chars_per_line: int) -> list[str]:
+    """Split text into fixed-length chunks, trying to break at natural boundaries.
+    Priority: Chinese punctuation > space > hard cut.
+    """
+    if len(text) <= chars_per_line:
+        return [text]
+    result = []
+    remaining = text
+    delimiters = "，。！？；、："
+    while remaining:
+        if len(remaining) <= chars_per_line:
+            result.append(remaining)
+            break
+        chunk = remaining[:chars_per_line]
+        # Look for Chinese punctuation near the end of the chunk
+        best = -1
+        for d in delimiters:
+            pos = chunk.rfind(d)
+            if pos > best:
+                best = pos
+        if best > chars_per_line // 2:
+            result.append(remaining[:best + 1])
+            remaining = remaining[best + 1:]
+        else:
+            result.append(chunk)
+            remaining = remaining[chars_per_line:]
+    return result
 def _ass_time(seconds: float) -> str:
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)
@@ -91,20 +144,35 @@ async def _merge_single(clip: dict, output_path: str, size: str, resolution: str
     else:
         video_out = "[vout]"
     filter_str = ";".join(filter_complex)
-    cmd = ["ffmpeg", "-y", *inputs, "-filter_complex", filter_str, "-map", video_out, *audio_map, "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", output_path]
+    cmd = ["ffmpeg", "-y", *inputs, "-filter_complex", filter_str, "-map", video_out, *audio_map, "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output_path]
     return await _run_ffmpeg(cmd, output_path)
+
+
+def _probe_duration(video_path: str) -> float:
+    """Get actual video duration via ffprobe. Returns 0 on failure."""
+    try:
+        import json as _json
+        probe = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", video_path],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10
+        )
+        if probe.returncode == 0:
+            info = _json.loads(probe.stdout)
+            return float(info.get("format", {}).get("duration", 0))
+    except Exception:
+        pass
+    return 0.0
 
 async def _concat_clips(clips: list[dict], output_path: str, size: str, resolution: str) -> dict:
     valid_clips = [c for c in clips if c.get("video_path") and os.path.exists(c.get("video_path", ""))]
     if not valid_clips:
-        return {"ok": False, "error": "?????????"}
+        return {"ok": False, "error": "没有有效视频片段"}
     try:
         ass_file = _generate_ass(valid_clips)
         cmd = ["ffmpeg", "-y"]
         filter_parts = []
         v_indices = []
-        a_indices = []
-        has_audio = False
+        a_labels = []
         scale = _scale_filter(size, resolution)
         for i, c in enumerate(valid_clips):
             vi = len([x for x in cmd if x == "-i"])
@@ -113,23 +181,21 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
             vf = f"[{vi}:v]{scale},setsar=1"
             filter_parts.append(f"{vf}[v{vi}]")
             audio_path = c.get("audio_path", "")
+            # Use actual video duration for alignment, not declared duration
+            real_dur = _probe_duration(c["video_path"])
+            clip_dur = real_dur if real_dur > 0 else float(c.get("duration", 5))
             if audio_path and os.path.exists(audio_path):
                 ai = len([x for x in cmd if x == "-i"])
                 cmd.extend(["-i", audio_path])
-                a_indices.append(ai)
-                filter_parts.append(f"[{ai}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{ai}]")
-                has_audio = True
+                # Pad audio to actual video duration so each audio aligns with its shot
+                filter_parts.append(f"[{ai}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad=whole_dur={clip_dur}[a_pad_{i}]")
+                a_labels.append(f"[a_pad_{i}]")
             else:
-                filter_parts.append(f"[{vi}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{vi}]")
-                a_indices.append(vi)
-                has_audio = True
+                filter_parts.append(f"anullsrc=r=44100:cl=stereo:d={clip_dur}[a_pad_{i}]")
+                a_labels.append(f"[a_pad_{i}]")
         n = len(v_indices)
         v_concat = "".join(f"[v{vi}]" for vi in v_indices)
         filter_parts.append(f"{v_concat}concat=n={n}:v=1:a=0[vout]")
-        if has_audio:
-            a_labels = [f"[a{ai}]" for ai in a_indices]
-        else:
-            a_labels = [f"[anull{vi}]" for vi in v_indices]
         a_concat = "".join(a_labels)
         filter_parts.append(f"{a_concat}concat=n={n}:v=0:a=1[aout]")
         if ass_file:
@@ -143,7 +209,7 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
         cmd.extend(["-map", video_out, "-map", "[aout]"])
         cmd.extend(["-c:v", "libx264", "-preset", "fast", "-crf", "23"])
         cmd.extend(["-c:a", "aac", "-b:a", "128k"])
-        cmd.extend(["-shortest", "-movflags", "+faststart", output_path])
+        cmd.extend(["-movflags", "+faststart", output_path])
         return await _run_ffmpeg(cmd, output_path)
     except Exception as e:
         return {"ok": False, "error": str(e)}
