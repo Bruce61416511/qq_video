@@ -1,4 +1,4 @@
-"""
+﻿"""
 LLM 分镜策划服务
 参考 MoneyPrinterTurbo: app/services/llm.py
 支持 OpenAI / DeepSeek / 通义千问 / 智谱 等兼容接口
@@ -217,7 +217,7 @@ def build_topic_user_message(
 内容要点：
 {outline_text}
 
-分镜规划：共{shot_count}镜，镜1({hook_dur}s)+中间{outline_count}镜(各{mid_dur}s)+结尾({end_dur}s)
+分镜规划：共{shot_count}镜，总时长{total_duration}s，LLM 按分镜提示词中的时长规则自行分配每镜秒数
 
 【必须执行的创作指令】
 - 钩子类型={hook_type}：{_hook_directive}
@@ -336,7 +336,10 @@ async def generate_shot_plan_from_topic(
     end_dur = base_dur
     mid_dur = (total_duration - hook_dur - end_dur) // outline_count if outline_count > 0 else base_dur
 
-    prompt = TOPIC_SHOT_PROMPT.replace("{hook_dur}", str(hook_dur)).replace("{mid_dur}", str(mid_dur)).replace("{end_dur}", str(end_dur))
+    if is_structured:
+        prompt = TOPIC_SHOT_PROMPT.replace("{hook_dur}", "≤5").replace("{mid_dur}", "4~15").replace("{end_dur}", "5~10")
+    else:
+        prompt = TOPIC_SHOT_PROMPT.replace("{hook_dur}", str(hook_dur)).replace("{mid_dur}", str(mid_dur)).replace("{end_dur}", str(end_dur))
 
     outline_text = _format_outline_text(content_outline)
 
@@ -387,7 +390,7 @@ async def generate_shot_plan_from_topic(
 内容要点：
 {outline_text}
 
-分镜规划：共{shot_count}镜，镜1({hook_dur}s)+中间{outline_count}镜(各{mid_dur}s)+结尾({end_dur}s)
+分镜规划：共{shot_count}镜，总时长{total_duration}s，LLM 按分镜提示词中的时长规则自行分配每镜秒数
 
 【必须执行的创作指令】
 - 钩子类型={hook_type}：{_hook_directive}
@@ -506,12 +509,24 @@ async def generate_shot_plan_from_topic(
         if json_match:
             shots = json.loads(json_match.group())
             for i, s in enumerate(shots):
-                if i == 0:
-                    s["duration"] = str(hook_dur)
-                elif i == len(shots) - 1:
-                    s["duration"] = str(end_dur)
+                if is_structured:
+                    # Use LLM's own duration; only fill missing
+                    if "duration" not in s or not s["duration"]:
+                        s["duration"] = str(base_dur)
                 else:
-                    s["duration"] = str(mid_dur)
+                    if i == 0:
+                        s["duration"] = str(hook_dur)
+                    elif i == len(shots) - 1:
+                        s["duration"] = str(end_dur)
+                    else:
+                        s["duration"] = str(mid_dur)
+                # Sync scene_prompt 【Xs】 with duration
+                sp = s.get("scene_prompt", "")
+                if sp:
+                    dur_match = re.search(r'【(\d+)[s秒]】', sp)
+                    if dur_match:
+                        s["duration"] = dur_match.group(1)
+            return shots
             return shots
     except Exception as e:
         pass
@@ -716,10 +731,20 @@ async def generate_shot_plan(topic: str, shot_count: int, shot_duration: str, co
 
             result = []
             for i, s in enumerate(shots[:shot_count]):
+                sp = str(s.get("scene_prompt", ""))
+                dur = str(shot_duration)
+                if sp:
+                    dur_match = re.search(r'【(\d+)[s秒]】', sp)
+                    if dur_match:
+                        dur = dur_match.group(1)
+                    elif "duration" in s and s["duration"]:
+                        dur = str(s["duration"])
+                elif "duration" in s and s["duration"]:
+                    dur = str(s["duration"])
                 result.append({
-                    "scene_prompt": str(s.get("scene_prompt", "")),
+                    "scene_prompt": sp,
                     "voice_script": str(s.get("voice_script", "")),
-                    "duration": shot_duration,
+                    "duration": dur,
                 })
             return result
 

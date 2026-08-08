@@ -597,6 +597,15 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
                           <div key={i} style={{ marginBottom: 1 }}>
                             {isObj && <span style={{ color: '#aaa', marginRight: 6 }}>{label}</span>}
                             <span style={{ color: '#555' }}>{isObj ? p.point : p}</span>
+                            {isObj && (p.data_point || p.sensory || p.emotion) && (
+                              <span style={{ color: '#bbb', fontSize: 10, marginLeft: 4 }}>
+                                {p.data_point && `📊 ${p.data_point}`}
+                                {(p.data_point && (p.sensory || p.emotion)) && ' · '}
+                                {p.sensory && `👃 ${p.sensory}`}
+                                {(p.sensory && p.emotion) && ' · '}
+                                {p.emotion && `💭 ${p.emotion}`}
+                              </span>
+                            )}
                           </div>
                         )
                       })}
@@ -1015,19 +1024,27 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
                   <span style={{color:'#e67e22',fontWeight:500}}>{selectedTopic.hook}</span>
                 </span>
               </div>
-              {selectedTopic.content_outline?.length > 0 && (
-                <div style={{ display: 'flex', marginBottom: 2 }}>
-                  <span style={{ color: '#888', width: 56, flexShrink: 0 }}>要点</span>
-                  <span>
-                    {selectedTopic.content_outline.map((p, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: 2 }}>
-                        <span style={{ width: 4, height: 4, borderRadius: 2, background: '#888', flexShrink: 0, marginTop: 7 }} />
-                        <span style={{ color: '#333' }}>{p}</span>
-                      </div>
-                    ))}
-                  </span>
-                </div>
-              )}
+              {selectedTopic.content_outline?.length > 0 && (() => {
+                const items = selectedTopic.content_outline.filter(p => typeof p !== 'object' || p.stage !== 'hook')
+                if (!items.length) return null
+                return (
+                  <div style={{ display: 'flex', marginBottom: 2 }}>
+                    <span style={{ color: '#888', width: 56, flexShrink: 0 }}>要点</span>
+                    <span>
+                      {items.map((p, i) => {
+                        const isObj = typeof p === 'object' && p !== null
+                        const label = isObj ? { evidence: '证据', scene: '场景', cta: '行动' }[p.stage] || '' : ''
+                        return (
+                          <div key={i} style={{ marginBottom: 1 }}>
+                            {isObj && <span style={{ color: '#aaa', marginRight: 6 }}>{label}</span>}
+                            <span style={{ color: '#555' }}>{isObj ? p.point : p}</span>
+                          </div>
+                        )
+                      })}
+                    </span>
+                  </div>
+                )
+              })()}
               {selectedTopic.target_emotion && (
                 <div style={{ display: 'flex', marginBottom: 2 }}>
                   <span style={{ color: '#888', width: 56, flexShrink: 0 }}>情绪</span>
