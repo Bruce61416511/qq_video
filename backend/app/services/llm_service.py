@@ -526,7 +526,7 @@ async def generate_shot_plan_from_topic(
                     dur_match = re.search(r'【(\d+)[s秒]】', sp)
                     if dur_match:
                         s["duration"] = dur_match.group(1)
-            return shots
+            await _validate_voice_duration(shots)
             return shots
     except Exception as e:
         pass
@@ -534,30 +534,70 @@ async def generate_shot_plan_from_topic(
     return _fallback_topic_shots(hook, content_outline, hook_dur, mid_dur, end_dur)
 
 
-def _validate_voice_duration(shots: list[dict]):
-    """校验 voice_script 字数是否匹配 duration，超出范围自动修正。"""
+async def _validate_voice_duration(shots: list[dict]):
+    """校验 voice_script 字数是否匹配 duration，超出截断、过短自动扩充。"""
+    import httpx as _httpx
+    from ..config import get_setting as _gs
+
     for i, s in enumerate(shots):
         dur = int(s.get("duration", 5))
         script = s.get("voice_script", "")
+        if not script:
+            continue
         char_count = len(script.replace(" ", ""))
         expected_min = dur * 3
         expected_max = dur * 5
+        target_len = dur * 4
+
         if char_count > expected_max:
-            # Too long: truncate to fit duration
-            target_len = dur * 4
-            while len(script.replace(" ", "")) > target_len + 2:
-                script = script.replace("，", ",", 1) if "，" in script and len(script.replace(" ", "")) > target_len + 5 else script
-            # Simple truncation at sentence boundary
-            if len(script.replace(" ", "")) > target_len + 3:
-                parts = script.split("。")
-                if len(parts) > 1:
-                    script = "。".join(parts[:-1]) + "。"
-                elif len(script.replace(" ", "")) > target_len + 5:
-                    script = script[:int(len(script) * target_len / char_count)] + "..."
-            s["voice_script"] = script
-            print(f"[Validate] Shot {i+1}: truncated voice_script from {char_count} to {len(script.replace(' ', ''))} chars (dur={dur}s)")
-        elif char_count < expected_min and char_count > 0:
-            print(f"[Validate] Shot {i+1}: voice_script too short ({char_count} chars for {dur}s), consider manual adjustment")
+            sentences = script.split("。")
+            trimmed = script
+            while sentences and len(trimmed.replace(" ", "")) > target_len:
+                sentences.pop()
+                trimmed = "。".join(sentences)
+                if sentences:
+                    trimmed += "。"
+            if len(trimmed.replace(" ", "")) > target_len:
+                trimmed = script[:target_len] + "..."
+            s["voice_script"] = trimmed
+            print(f"[Validate] Shot {i+1}: truncated voice_script {char_count}->{len(trimmed.replace(' ', ''))} chars (dur={dur}s)")
+
+        elif char_count < expected_min:
+            print(f"[Validate] Shot {i+1}: voice_script too short ({char_count}/{target_len} chars for {dur}s), extending via LLM...")
+            try:
+                api_key = await _gs("llm_api_key")
+                if api_key:
+                    model = (await _gs("llm_model")) or "qwen-plus"
+                    base_url = (await _gs("llm_base_url")) or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+                    extend_prompt = (
+                        f"你是一个短视频配音文案编辑。下面的文案只有{char_count}字，"
+                        f"但需要{dur}秒的配音时长（约{target_len}字）。"
+                        f"请保持原意和口语风格，扩充到约{target_len}字，直接返回扩充后的文案，不要加任何说明。\n\n"
+                        f"原文：{script}"
+                    )
+                    async with _httpx.AsyncClient(timeout=30.0) as client:
+                        resp = await client.post(
+                            f"{base_url}/chat/completions",
+                            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                            json={
+                                "model": model,
+                                "messages": [{"role": "user", "content": extend_prompt}],
+                                "temperature": 0.7,
+                                "max_tokens": 300,
+                            },
+                        )
+                        data = resp.json()
+                        if "choices" in data:
+                            extended = data["choices"][0]["message"]["content"].strip()
+                            new_count = len(extended.replace(" ", ""))
+                            s["voice_script"] = extended
+                            print(f"[Validate] Shot {i+1}: extended voice_script {char_count}->{new_count} chars (dur={dur}s)")
+                        else:
+                            print(f"[Validate] Shot {i+1}: LLM extend failed: {data}")
+                else:
+                    print(f"[Validate] Shot {i+1}: no API key, skip extend")
+            except Exception as e:
+                print(f"[Validate] Shot {i+1}: extend error: {e}")
 
 def _fallback_topic_shots(hook, outline, hook_dur, mid_dur, end_dur):
     """LLM 不可用时的降级模板。"""
@@ -746,6 +786,7 @@ async def generate_shot_plan(topic: str, shot_count: int, shot_duration: str, co
                     "voice_script": str(s.get("voice_script", "")),
                     "duration": dur,
                 })
+            await _validate_voice_duration(result)
             return result
 
     except Exception as e:
