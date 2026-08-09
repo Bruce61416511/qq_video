@@ -57,8 +57,6 @@ export default function TextToVideo() {
     { key: "narration_prompt", filename: "narration_prompt.txt", description: "智能分镜-旁白提示词", exists: true },
     { key: "scene_prompt", filename: "scene_prompt.txt", description: "智能分镜-画面提示词", exists: true },
     { key: "topic_outline_creation_prompt", filename: "topic_outline_creation_prompt.txt", description: "智能分镜-Outline生成提示词", exists: true },
-    { key: "shot_topic_prompt", filename: "shot_topic_prompt.txt", description: "旧版-选题拆镜提示词", exists: true },
-    { key: "manual_topic_prompt", filename: "manual_topic_prompt.txt", description: "旧版-手动拆镜提示词", exists: true },
   ])
   const [collapsed, setCollapsed] = useState({})
   const [mediaId, setMediaId] = useState(null)
@@ -1411,7 +1409,6 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
               renderItem={file => (
                 <List.Item extra={<Button size="small" icon={<EditOutlined />} onClick={() => openConfigEditor(file)}>编辑</Button>}>
                   <List.Item.Meta
-                    avatar={<span style={{ fontSize: 20 }}>{file.key === "shot_topic_prompt" ? "🎬" : "✏️"}</span>}
                     title={<span style={{ fontFamily: "monospace", fontSize: 13 }}>{file.filename}</span>}
                     description={<span style={{ fontSize: 12 }}>{file.description}</span>}
                   />
@@ -1425,8 +1422,6 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
               <li>narration_prompt.txt — 智能分镜：outline → 4段旁白文案</li>
               <li>scene_prompt.txt — 智能分镜：旁白+真实时长 → 画面提示词</li>
               <li>topic_outline_creation_prompt.txt — 智能分镜：自由文本 → outline结构</li>
-              <li style={{ color: "#aaa" }}>shot_topic_prompt.txt — 旧版：选题自动拆镜</li>
-              <li style={{ color: "#aaa" }}>manual_topic_prompt.txt — 旧版：手动输入拆镜</li>
             </ul>
           </Card>
         </div>
