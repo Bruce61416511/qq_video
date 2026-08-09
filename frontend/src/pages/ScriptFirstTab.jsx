@@ -1,5 +1,5 @@
 import React from 'react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Steps, Input, Button, Card, App, Select, Tag, Space, Divider,
   Typography, Spin, Tooltip, Alert, Progress
@@ -70,6 +70,40 @@ function ScriptFirstTabInner({ videoTopics, competitorTemplates }) {
   const [shotProgress, setShotProgress] = useState({})
   const [composing, setComposing] = useState(false)
   const [compositionResult, setCompositionResult] = useState(null)
+
+  // Persist pipeline state to localStorage
+  React.useEffect(() => {
+    const hasData = outline || narrations.length > 0 || ttsResults.length > 0 || scenes.length > 0
+    if (!hasData) return
+    try {
+      localStorage.setItem('script_first_state', JSON.stringify({
+        current, outline, narrations, ttsResults, scenes,
+        freeText, inputMode, selectedTopic, selectedTopicId, selectedTemplateId, totalDuration,
+        mediaId, shotProgress,
+      }))
+    } catch {}
+  }, [current, outline, narrations, ttsResults, scenes, freeText, inputMode, selectedTopic, selectedTopicId, selectedTemplateId, totalDuration, mediaId, shotProgress])
+
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem('script_first_state')
+      if (!saved) return
+      const s = JSON.parse(saved)
+      if (s.current !== undefined) setCurrent(s.current)
+      if (s.outline) setOutline(s.outline)
+      if (s.narrations) setNarrations(s.narrations)
+      if (s.ttsResults) setTtsResults(s.ttsResults)
+      if (s.scenes) setScenes(s.scenes)
+      if (s.freeText) setFreeText(s.freeText)
+      if (s.inputMode) setInputMode(s.inputMode)
+      if (s.selectedTopic) setSelectedTopic(s.selectedTopic)
+      if (s.selectedTopicId) setSelectedTopicId(s.selectedTopicId)
+      if (s.selectedTemplateId) setSelectedTemplateId(s.selectedTemplateId)
+      if (s.totalDuration) setTotalDuration(s.totalDuration)
+      if (s.mediaId) setMediaId(s.mediaId)
+      if (s.shotProgress) setShotProgress(s.shotProgress)
+    } catch {}
+  }, [])
 
   // ▸▸▸ Step 0: Generate Outline ▸▸▸
   const handleCreateOutline = async () => {
@@ -292,9 +326,10 @@ function ScriptFirstTabInner({ videoTopics, competitorTemplates }) {
   }
 
   // Cancel a shot generation
-  const pollRefs = {}
-  function cancelShot(si) {
-    if (pollRefs[si]) { clearInterval(pollRefs[si]); delete pollRefs[si] }
+  const pollRefs = useRef({})
+  async function cancelShot(si) {
+    if (pollRefs.current[si]) { clearInterval(pollRefs.current[si]); delete pollRefs.current[si] }
+    try { await fetch("http://localhost:8000/api/media/" + mediaId + "/shots/" + si + "/cancel", { method: "POST" }) } catch (e) {}
     setShotProgress(p => ({ ...p, [si]: { status: "cancelled" } }))
   }
 
@@ -307,20 +342,20 @@ function ScriptFirstTabInner({ videoTopics, competitorTemplates }) {
       if (!res.ok) { setShotProgress(p => ({ ...p, [si]: { status: "failed" } })); return }
       await new Promise((resolve, reject) => {
         const poll = setInterval(async () => {
-          if (pollRefs[si] !== poll) { resolve(); return }
+          if (pollRefs.current[si] !== poll) { resolve(); return }
           try {
             const spRes = await fetch("http://localhost:8000/api/media/" + mediaId + "/shots")
             const shots = await spRes.json()
             const s = shots.find(sh => sh.shot_index === si)
             if (s) {
               setShotProgress(p => ({ ...p, [si]: { status: s.status === "done" ? "done" : s.status === "failed" ? "failed" : "generating", progress: s.progress || 0, video_path: s.clip_path || "", audio_path: s.audio_path || "" } }))
-              if (s.status === "done" || s.status === "failed") { clearInterval(poll); delete pollRefs[si]; resolve() }
+              if (s.status === "done" || s.status === "failed") { clearInterval(poll); delete pollRefs.current[si]; resolve() }
             }
           } catch (e) {}
         }, 2000)
-        pollRefs[si] = poll
+        pollRefs.current[si] = poll
         setTimeout(() => { 
-          if (pollRefs[si] === poll) { clearInterval(poll); delete pollRefs[si]; setShotProgress(p => ({ ...p, [si]: { status: "failed", error: "timeout" } })); resolve() }
+          if (pollRefs.current[si] === poll) { clearInterval(poll); delete pollRefs.current[si]; setShotProgress(p => ({ ...p, [si]: { status: "failed", error: "timeout" } })); resolve() }
         }, 600000)
       })
     } catch (e) {
@@ -1005,6 +1040,8 @@ function ScriptFirstTabInner({ videoTopics, competitorTemplates }) {
                 </Tag>
               </Space>
               <Space>
+                <Button size="small" onClick={async () => { try { const lr = await fetch("http://localhost:8000/api/media"); const ml = await lr.json(); const cur = ml.find(m => m.id === mediaId); const curPrompt = cur?.prompt || ""; for (const m of ml) { if (curPrompt && m.prompt !== curPrompt) continue; const sr = await fetch("http://localhost:8000/api/media/"+m.id+"/shots"); const shots = await sr.json(); const s = shots.find(sh => sh.shot_index === si); if (s && s.clip_path) { setShotProgress(p => ({ ...p, [si]: { status: s.status, progress: s.progress||100, video_path: s.clip_path, audio_path: s.audio_path||"" } })); if (!mediaId) setMediaId(m.id); break } } } catch(e){} }}>加载</Button>
+                {(shotProgress[si]?.status === "done" || shotProgress[si]?.status === "failed") && <Button size="small" danger onClick={() => { setShotProgress(p => { const n = {...p}; delete n[si]; return n }) }}>清除</Button>}
                 {prog?.status === "generating" ? (
                   <Button size="small" danger onClick={() => cancelShot(si)}>取消</Button>
                 ) : (
@@ -1019,7 +1056,7 @@ function ScriptFirstTabInner({ videoTopics, competitorTemplates }) {
             </div>
             {prog?.status === "generating" && <Progress percent={prog.progress || 0} size="small" status="active" />}
             {prog?.status === "done" && prog.video_path && (
-              <video controls style={{ width: "100%", maxHeight: 200, borderRadius: 8 }} src={"http://localhost:8000/" + prog.video_path.replace(/\\/g, "/")} />
+              <video controls style={{ width: "100%", maxHeight: 200, borderRadius: 8 }} src={"http://localhost:8000/uploads/" + prog.video_path.split(/[\\/]/).pop()} />
             )}
             {prog?.status === "failed" && <div style={{ color: "#e74c3c", fontSize: 12 }}>Failed: {prog.error || "Unknown error"}</div>}
           </div>

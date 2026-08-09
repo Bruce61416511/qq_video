@@ -594,6 +594,10 @@ async def _run_shot_generation(media_id: int, shot_index: int):
             resolution=resolution,
             progress_callback=_progress_cb,
         )
+    except asyncio.CancelledError:
+      await _update_shot(media_id, shot_index, status="cancelled", progress=0)
+      _shot_cancel.discard((media_id, shot_index))
+      raise
     except Exception as e:
         video_result = {"status": "error", "message": str(e)}
 
@@ -664,6 +668,10 @@ async def _run_shot_video_only(media_id: int, shot_index: int):
             resolution=resolution,
             progress_callback=_progress_cb,
         )
+    except asyncio.CancelledError:
+      await _update_shot(media_id, shot_index, status="cancelled", progress=0)
+      _shot_cancel.discard((media_id, shot_index))
+      raise
     except Exception as e:
         video_result = {"status": "error", "message": str(e)}
 

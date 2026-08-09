@@ -114,7 +114,7 @@ async def create_outline(free_text: str, competitor_framework: str = "") -> dict
 # ═══════════════════════════════════════════
 
 def _format_outline_for_narration(outline: list) -> str:
-    """将 content_outline 格式化为旁白 prompt 可读文本。"""
+    """将 content_outline 格式化为旁白 prompt 可读文本（含产品植入）。"""
     lines = []
     for i, item in enumerate(outline):
         if isinstance(item, str):
@@ -122,7 +122,16 @@ def _format_outline_for_narration(outline: list) -> str:
         elif isinstance(item, dict):
             stage = item.get("stage", f"镜{i+1}")
             point = item.get("point", "")
-            lines.append(f"{stage}: {point}")
+            parts = [f"{stage}: {point}"]
+            # Include product_moment if present
+            pm = item.get("product_moment", "")
+            if pm:
+                parts.append(f"  产品植入: {pm}")
+            # Include emotion for tone guidance
+            em = item.get("emotion", "")
+            if em:
+                parts.append(f"  情绪: {em}")
+            lines.append("\n".join(parts))
     return "\n".join(lines)
 
 
