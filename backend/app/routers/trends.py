@@ -186,11 +186,15 @@ from ..services import topic_to_video
 
 @router.post("/topic-to-video/generate")
 async def generate_topics():
-    """触发选题生成（后台运行）。"""
-    ok = topic_to_video.generate_async()
-    if not ok:
-        return {"ok": False, "error": "生成进行中，请稍后"}
-    return {"ok": True, "message": "选题生成已启动，约需10-30秒"}
+    """触发选题生成（同步阻塞，约30-60秒）。"""
+    import asyncio, concurrent.futures
+    loop = asyncio.get_running_loop()
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        await loop.run_in_executor(pool, topic_to_video.generate)
+    result = topic_to_video.get_status()["result"]
+    if result and result.get("ok"):
+        return {"ok": True, "count": result.get("count", 0)}
+    return {"ok": False, "error": result.get("error", "生成失败") if result else "未知错误"}
 
 @router.get("/topic-to-video/status")
 async def topic_status():

@@ -161,24 +161,17 @@ export default function TrendBoard() {
   }
 
   const generateTopics = async () => {
+
     setTopicGenerating(true)
     try {
-      const start = await trendsApi.generateTopics()
-      if (!start.ok) { message.warning(start.error || "无法启动"); setTopicGenerating(false); return }
-      let n = 0
-      while (n < 30) {
-        await new Promise(r => setTimeout(r, 2000))
-        const st = await trendsApi.topicStatus(); n++
-        if (!st.running) {
-          if (st.result && st.result.ok) {
-            message.success(`选题生成完成，共 ${st.result.count} 个`)
-            setTopicKey(k => k + 1)
-          } else {
-            setTopicKey(k => k + 1)
-          }
-          break
-        }
+      const result = await trendsApi.generateTopics()
+      if (result.ok) {
+        message.success("选题生成完成，共 " + (result.count || 0) + " 个")
+      } else {
+        message.error(result.error || "生成失败")
       }
+      await loadTopics()
+      setTopicKey(k => k + 1)
     } catch (e) { message.error(e.message) }
     finally { setTopicGenerating(false) }
   }

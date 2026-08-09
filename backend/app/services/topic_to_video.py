@@ -227,6 +227,7 @@ def generate():
         if not report_titles:
             results = all_results
         results += _get_crawler_topics()
+        results = results[:8]
         if not results:
             _status["html"] = _generate_html([], gen_time=_status.get("generated_at"))
             _status["result"] = {"ok": True, "count": 0, "message": "没有匹配的热点"}
@@ -249,7 +250,7 @@ def generate():
         base_url = _get_setting("llm_base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1")
 
         from openai import OpenAI
-        client = OpenAI(api_key=api_key, base_url=base_url)
+        client = OpenAI(api_key=api_key, base_url=base_url, timeout=90.0)
 
         user_content = prompt_template.replace("{hot_topics}", topics_text)
 
@@ -260,17 +261,33 @@ def generate():
                 {"role": "user", "content": user_content},
             ],
             temperature=0.7,
-            max_tokens=6000,
+            max_tokens=1500,
         )
 
         content = response.choices[0].message.content
-        json_match = re.search(r'\{[\s\S]*\}', content)
+        with open(BACKEND_DIR / "output" / "_last_llm.txt", "w", encoding="utf-8") as dbg:
+            dbg.write(content)
+        # Remove markdown fences and fix trailing commas
+        clean = content
+        if "`json" in clean:
+            clean = clean.split("`json")[1].split("`")[0]
+        elif "`" in clean:
+            clean = clean.split("`")[1].split("`")[0]
+        import re as _re
+        clean = _re.sub(r',\s*}', "}", clean)
+        clean = _re.sub(r',\s*]', "]", clean)
+        json_match = re.search(r'\{[\s\S]*\}', clean)
         if not json_match:
-            _status["html"] = _generate_html([], error="LLM 返回格式异常")
-            _status["result"] = {"ok": False, "error": "LLM 未返回有效 JSON"}
+            _status["html"] = _generate_html([], error="LLM return fmt err")
+            _status["result"] = {"ok": False, "error": "LLM no valid JSON"}
+            return
+        try:
+            data = json.loads(json_match.group())
+        except json.JSONDecodeError as je:
+            _status["html"] = _generate_html([], error=f"JSON: {je}")
+            _status["result"] = {"ok": False, "error": f"JSON: {je}"}
             return
 
-        data = json.loads(json_match.group())
         topics = data.get("topics", [])
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
