@@ -227,7 +227,7 @@ def generate():
         if not report_titles:
             results = all_results
         results += _get_crawler_topics()
-        results = results[:8]
+        results = results[:20]
         if not results:
             _status["html"] = _generate_html([], gen_time=_status.get("generated_at"))
             _status["result"] = {"ok": True, "count": 0, "message": "没有匹配的热点"}
@@ -261,7 +261,7 @@ def generate():
                 {"role": "user", "content": user_content},
             ],
             temperature=0.7,
-            max_tokens=1500,
+            max_tokens=4000,
         )
 
         content = response.choices[0].message.content
