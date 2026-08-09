@@ -11,6 +11,7 @@ import {
   ArrowLeftOutlined, VideoCameraOutlined, EyeOutlined, PlusOutlined, MinusOutlined, DownloadOutlined
 } from '@ant-design/icons'
 import { mediaApi, trendsApi } from '../services/api'
+import ScriptFirstTab from './ScriptFirstTab'
 
 const { TextArea } = Input
 
@@ -53,8 +54,11 @@ export default function TextToVideo() {
   const [editingContent, setEditingContent] = useState("")
   const [savingConfig, setSavingConfig] = useState(false)
   const [configFiles] = useState([
-    { key: "shot_topic_prompt", filename: "shot_topic_prompt.txt", description: "选题拆镜提示词", exists: true },
-    { key: "manual_topic_prompt", filename: "manual_topic_prompt.txt", description: "手动拆镜提示词", exists: true },
+    { key: "narration_prompt", filename: "narration_prompt.txt", description: "智能分镜-旁白提示词", exists: true },
+    { key: "scene_prompt", filename: "scene_prompt.txt", description: "智能分镜-画面提示词", exists: true },
+    { key: "topic_outline_creation_prompt", filename: "topic_outline_creation_prompt.txt", description: "智能分镜-Outline生成提示词", exists: true },
+    { key: "shot_topic_prompt", filename: "shot_topic_prompt.txt", description: "旧版-选题拆镜提示词", exists: true },
+    { key: "manual_topic_prompt", filename: "manual_topic_prompt.txt", description: "旧版-手动拆镜提示词", exists: true },
   ])
   const [collapsed, setCollapsed] = useState({})
   const [mediaId, setMediaId] = useState(null)
@@ -1394,54 +1398,8 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
     const { Text } = Typography
 
   const tabItems = [
-    {
-      key: "video", label: "文生视频", icon: <VideoCameraOutlined />,
-      children: (
-        <div style={{ maxWidth: 780 }}>
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#142528", letterSpacing: "-0.3px" }}>文生视频</h2>
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "#8c8c8c" }}>
-              AI 智能分镜 — 输入主题自动拆分分镜，逐镜编辑后生成完整视频
-            </p>
-          </div>
-          <Tooltip title="恢复初始状态">
-            <Button size="small" icon={<ReloadOutlined />} onClick={resetAll}>重置</Button>
-          </Tooltip>
-        </div>
-      </div>
-
-      <Steps
-        current={current}
-        size="small"
-        style={{ marginBottom: 24 }}
-        onChange={(step) => { setComposing(false); setCurrent(step) }}
-        items={[
-          { title: '输入主题', icon: <EditOutlined /> },
-          { title: '编辑分镜', icon: <VideoCameraOutlined /> },
-          { title: '逐镜生成', icon: <ThunderboltOutlined /> },
-          { title: '合成视频', icon: <CheckCircleOutlined /> },
-        ]}
-      />
-
-      {current === 0 && renderStep1()}
-      {current === 1 && renderStep2()}
-      {current === 2 && renderStep3()}
-      {current === 3 && renderStep4()}
-
-      {current === 0 && (
-        <Card size="small" style={{ marginTop: 20 }}>
-          <span style={{ fontWeight: 600, fontSize: 13 }}>💡 提示</span>
-          <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12, color: '#8c8c8c', lineHeight: 2 }}>
-            <li>选择今日选题自动拆镜，或手动输入主题自由创作</li>
-            <li>Step 2 可逐镜编辑画面提示词和配音文案</li>
-            <li>生成的视频会自动存入素材库</li>
-          </ul>
-        </Card>
-      )}
-        </div>
-      ),
+    { key: "script-first", label: "智能分镜", icon: <ThunderboltOutlined />,
+      children: <ScriptFirstTab videoTopics={videoTopics} competitorTemplates={competitorTemplates} />
     },
     {
       key: "config", label: "生成配置", icon: <SettingOutlined />,
@@ -1464,8 +1422,11 @@ const regenerateSingleAudio = async (shotIndex, newScript) => {
           <Card size="small" style={{ marginTop: 16 }}>
             <span style={{ fontWeight: 600, fontSize: 13 }}>💡 提示</span>
             <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12, color: "#6c777b", lineHeight: 2 }}>
-              <li>shot_topic_prompt.txt — 控制从热搜选题自动生成分镜</li>
-              <li>manual_topic_prompt.txt — 控制手动输入主题时生成分镜</li>
+              <li>narration_prompt.txt — 智能分镜：outline → 4段旁白文案</li>
+              <li>scene_prompt.txt — 智能分镜：旁白+真实时长 → 画面提示词</li>
+              <li>topic_outline_creation_prompt.txt — 智能分镜：自由文本 → outline结构</li>
+              <li style={{ color: "#aaa" }}>shot_topic_prompt.txt — 旧版：选题自动拆镜</li>
+              <li style={{ color: "#aaa" }}>manual_topic_prompt.txt — 旧版：手动输入拆镜</li>
             </ul>
           </Card>
         </div>

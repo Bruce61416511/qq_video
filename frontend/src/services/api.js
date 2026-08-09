@@ -1,4 +1,4 @@
-﻿const BASE = 'http://localhost:8000/api'
+const BASE = 'http://localhost:8000/api'
 
 async function request(url, options = {}) {
   const res = await fetch(`${BASE}${url}`, {
@@ -41,6 +41,32 @@ export const mediaApi = {
   regenerateShotVideo: (mediaId, data) => request('/media/' + mediaId + '/regenerate-shot-video', { method: 'POST', body: JSON.stringify(data) }),
   regenerateShotAudio: (mediaId, data) => request('/media/' + mediaId + '/regenerate-shot-audio', { method: 'POST', body: JSON.stringify(data) }),
   compose: (mediaId) => request('/media/' + mediaId + '/compose', { method: 'POST' }),
+  // Script-First 流水线
+  scriptCreateOutline: (text, competitorFramework) => request('/media/script-create-outline', {
+    method: 'POST',
+    body: JSON.stringify({ text, competitor_framework: competitorFramework || '' }),
+  }),
+  scriptNarration: (outline, competitorFramework) => request('/media/script-narration', {
+    method: 'POST',
+    body: JSON.stringify({ outline, competitor_framework: competitorFramework || '' }),
+  }),
+  scriptTts: (narrations, voice) => request('/media/script-tts', {
+    method: 'POST',
+    body: JSON.stringify({ narrations, voice }),
+  }),
+  scriptScenes: (outline, narrations, durations, competitorFramework) => request('/media/script-scenes', {
+    method: 'POST',
+    body: JSON.stringify({ outline, narrations, durations, competitor_framework: competitorFramework || '' }),
+  }),
+  scriptGenerate: (data) => request('/media/script-generate', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  scriptRegenerate: (text, voice, index) => request('/media/script-regenerate', {
+    method: 'POST',
+    body: JSON.stringify({ text, voice, index }),
+  }),
+
   upload: async (file) => {
     const formData = new FormData()
     formData.append('file', file)

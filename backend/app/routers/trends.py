@@ -212,6 +212,9 @@ PROMPT_FILES = {
     "competitor_analysis_prompt": "competitor_analysis_prompt.txt",
     "shot_topic_prompt": "shot_topic_prompt.txt",
     "manual_topic_prompt": "manual_topic_prompt.txt",
+    "narration_prompt": "narration_prompt.txt",
+    "scene_prompt": "scene_prompt.txt",
+    "topic_outline_creation_prompt": "topic_outline_creation_prompt.txt",
 }
 
 # TrendRadar 原生配置（TrendRadar-master/config/）

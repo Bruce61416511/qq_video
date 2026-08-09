@@ -244,6 +244,24 @@ def build_topic_user_message(
     return user_content
 
 
+# ── Script-first 新增 prompt ──
+
+TOPIC_OUTLINE_PROMPT = _load_prompt(
+    "topic_outline_creation_prompt.txt",
+    """你是一名短视频内容策划。根据用户输入的一句话选题，拆解为结构化数据。仅输出 JSON。"""
+)
+
+NARRATION_PROMPT = _load_prompt(
+    "narration_prompt.txt",
+    """你是一名短视频配音文案写手。根据选题结构输出自然流畅的配音旁白。仅输出 JSON 数组。"""
+)
+
+SCENE_PROMPT = _load_prompt(
+    "scene_prompt.txt",
+    """你是一名短视频视觉导演。根据配音文案和时长输出分镜画面提示词。仅输出 JSON 数组。"""
+)
+
+
 def _parse_competitor_framework(competitor_framework: str) -> list:
     """Parse competitor framework JSON into a list of text parts for user message."""
     import json as _json

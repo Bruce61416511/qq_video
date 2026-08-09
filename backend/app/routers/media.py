@@ -1192,3 +1192,104 @@ async def delete_competitor_template(template_id: int, db: AsyncSession = Depend
     await db.delete(t)
     await db.commit()
     return {"ok": True}
+
+# ====== Script-First 流水线 ======
+
+@router.post("/script-create-outline")
+async def script_create_outline(data: dict = Body(...)):
+    """"无选题时，从自由文本生成结构化 outline。"""
+    from ..services.script_service import create_outline
+    free_text = data.get("text", "").strip()
+    competitor_framework = data.get("competitor_framework", "")
+    if not free_text:
+        raise HTTPException(400, "text 参数不能为空")
+    try:
+        result = await create_outline(free_text, competitor_framework)
+        return {"outline": result}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/script-narration")
+async def script_narration(data: dict = Body(...)):
+    """从 outline 生成 4 段自然旁白（无字数约束）。"""
+    from ..services.script_service import generate_narration
+    outline = data.get("outline", [])
+    competitor_framework = data.get("competitor_framework", "")
+    if not outline:
+        raise HTTPException(400, "outline 参数不能为空")
+    try:
+        narrations = await generate_narration(outline, competitor_framework)
+        return {"narrations": narrations}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/script-tts")
+async def script_tts(data: dict = Body(...)):
+    """旁白数组 → TTS 合成 mp3 + ffprobe 真实时长。"""
+    from ..services.script_service import synthesize_tts
+    narrations = data.get("narrations", [])
+    voice_id = data.get("voice", None)
+    if not narrations:
+        raise HTTPException(400, "narrations 参数不能为空")
+    try:
+        results = await synthesize_tts(narrations, voice_id)
+        return {"segments": results, "total_duration": round(sum(r["duration"] for r in results), 1)}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/script-scenes")
+async def script_scenes(data: dict = Body(...)):
+    """旁白 + 真实时长 → 分镜画面提示词。"""
+    from ..services.script_service import generate_scenes
+    outline = data.get("outline", [])
+    narrations = data.get("narrations", [])
+    durations = data.get("durations", [])
+    competitor_framework = data.get("competitor_framework", "")
+    if not outline or not narrations or not durations:
+        raise HTTPException(400, "outline / narrations / durations 参数不能为空")
+    try:
+        scenes = await generate_scenes(outline, narrations, durations, competitor_framework)
+        return {"scenes": scenes}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/script-generate")
+async def script_generate_all(data: dict = Body(...)):
+    """一键 Script-First 全流程：输入选题或自由文本 → 完整分镜 + 音频。"""
+    from ..services.script_service import script_generate
+    free_text = data.get("text", "")
+    topic_data = data.get("topic", None)
+    competitor_framework = data.get("competitor_framework", "")
+    voice_id = data.get("voice", None)
+    if not free_text and not topic_data:
+        raise HTTPException(400, "请提供 text 或 topic 参数")
+    try:
+        result = await script_generate(
+            free_text=free_text,
+            topic_data=topic_data,
+            competitor_framework=competitor_framework,
+            voice_id=voice_id,
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/script-regenerate")
+async def script_regenerate(data: dict = Body(...)):
+    """单段旁白重新 TTS 合成。"""
+    from ..services.script_service import _synthesize_single
+    text = data.get("text", "")
+    voice_id = data.get("voice", None)
+    index = data.get("index", 0)
+    if not text:
+        raise HTTPException(400, "text 参数不能为空")
+    try:
+        result = await _synthesize_single(text, voice_id, index)
+        return {"segment": result}
+    except Exception as e:
+        raise HTTPException(500, str(e))
