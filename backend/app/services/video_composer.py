@@ -36,6 +36,7 @@ def _generate_ass(clips: list[dict]):
     """
     chars_per_line = 12
     chars_per_second = 4.5
+    subtitle_delay = 0.15   # 150ms delay so voice starts before text appears
     
     has_any = any(c.get("subtitle", "").strip() for c in clips)
     if not has_any:
@@ -62,20 +63,30 @@ def _generate_ass(clips: list[dict]):
         clip_dur = _probe_duration(c.get("video_path", ""))
         if clip_dur <= 0:
             clip_dur = float(c.get("duration", 5))
+        # Probe actual audio duration for subtitle sync
+        audio_dur = 0.0
+        audio_path = c.get("audio_path", "")
+        if audio_path:
+            audio_dur = _probe_duration(audio_path)
+        # Use audio duration if available, otherwise fall back to chars_per_second estimate
+        if audio_dur <= 0:
+            audio_dur = sum(len(s) for s in _split_by_chars(sub_text, chars_per_line)) / chars_per_second if sub_text else 0
         # Each shot's subtitles start at the shot's boundary (trim overflow from previous shot)
         clip_start = cumulative
         shot_time = 0.0  # local time within this shot
         if sub_text:
             segments = _split_by_chars(sub_text, chars_per_line)
             total_chars = sum(len(s) for s in segments)
-            if total_chars > 0:
+            if total_chars > 0 and audio_dur > 0:
                 for seg in segments:
-                    seg_dur = len(seg) / chars_per_second
+                    # Scale each segment's duration proportionally to match actual audio duration
+                    seg_ratio = len(seg) / total_chars
+                    seg_dur = audio_dur * seg_ratio
                     # Stop if we exceed the clip's video duration
                     if shot_time + seg_dur > clip_dur:
                         break
-                    start = _ass_time(clip_start + shot_time)
-                    end = _ass_time(clip_start + shot_time + seg_dur)
+                    start = _ass_time(clip_start + shot_time + subtitle_delay)
+                    end = _ass_time(clip_start + shot_time + seg_dur + subtitle_delay)
                     lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{seg}")
                     shot_time += seg_dur
         cumulative = clip_start + clip_dur
