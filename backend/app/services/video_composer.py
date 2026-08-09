@@ -3,6 +3,7 @@
 ?? ffmpeg + ASS ??????? + ?? + ?????????
 """
 import os
+import tempfile
 import subprocess
 import uuid
 from pathlib import Path
@@ -41,16 +42,18 @@ def _generate_ass(clips: list[dict], durations: list[tuple] = None):
     has_any = any(c.get("subtitle", "").strip() for c in clips)
     if not has_any:
         return None
-    ass_path = str(UPLOAD_DIR / f"sub_{uuid.uuid4().hex}.ass")
+    ass_path = str(Path(tempfile.gettempdir()) / f"sub_{uuid.uuid4().hex}.ass")
     lines = [
         "[Script Info]",
         "Title: Subtitles",
         "ScriptType: v4.00+",
+        "PlayResX: 1080",
+        "PlayResY: 1920",
         "PlayDepth: 0",
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        "Style: Default,SimHei,18,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,4,2,2,10,10,120,1",
+        "Style: Default,SimHei,60,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,4,2,2,10,10,120,1",
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",

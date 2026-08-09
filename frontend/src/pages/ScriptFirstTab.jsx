@@ -70,6 +70,7 @@ function ScriptFirstTabInner({ videoTopics, competitorTemplates }) {
   const [shotProgress, setShotProgress] = useState({})
   const [composing, setComposing] = useState(false)
   const [compositionResult, setCompositionResult] = useState(null)
+  const [composedVideo, setComposedVideo] = useState(null)
 
   // Persist pipeline state to localStorage
   React.useEffect(() => {
@@ -401,7 +402,26 @@ function ScriptFirstTabInner({ videoTopics, competitorTemplates }) {
       const res = await fetch("http://localhost:8000/api/media/" + mediaId + "/compose", { method: "POST" })
       const data = await res.json()
       setCompositionResult(data)
-      message.success("Video composed!")
+      setComposedVideo(null)
+      message.success("Composing, please wait...")
+      let pollCount = 0
+      const pid = setInterval(async () => {
+        pollCount++
+        try {
+          const mr = await fetch("http://localhost:8000/api/media/" + mediaId)
+          const media = await mr.json()
+          if (media.status === "ready" && media.filepath) {
+            clearInterval(pid)
+            const fn = media.filepath.split(/[\\\\/]/).pop()
+            setComposedVideo("http://localhost:8000/uploads/" + fn)
+            setComposing(false)
+            message.success("Compose done!")
+          } else if (media.status === "failed") {
+            clearInterval(pid); setComposing(false); message.error("Compose failed")
+          }
+          if (pollCount > 80) { clearInterval(pid); setComposing(false); message.error("Timeout") }
+        } catch (e) { if (pollCount > 80) { clearInterval(pid); setComposing(false) } }
+      }, 3000)
     } catch (e) {
       message.error("Compose failed: " + e.message)
     } finally {
@@ -1097,8 +1117,14 @@ function ScriptFirstTabInner({ videoTopics, competitorTemplates }) {
           <Alert type="info" message="Generate each clip individually, or use '全部生成' above." />
         )}
       </Space>
-      {compositionResult && (
-        <Alert type="success" style={{ marginTop: 12 }} message={`Composed! Media ID: ${compositionResult.media_id || mediaId}`} />
+      {composedVideo && (
+        <div style={{ marginTop: 12 }}>
+          <Alert type="success" style={{ marginBottom: 8 }} message={`Composed! Media ID: ${compositionResult?.media_id || mediaId}`} />
+          <video controls style={{ width: "100%", maxHeight: 360, borderRadius: 8 }} src={composedVideo} />
+        </div>
+      )}
+      {compositionResult && !composedVideo && (
+        <Alert type="info" style={{ marginTop: 12 }} message={`Composing... Media ID: ${compositionResult?.media_id || mediaId}`} />
       )}
     </Card>
   )
