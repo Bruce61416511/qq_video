@@ -1051,9 +1051,24 @@ function ScriptFirstTabInner({ videoTopics, competitorTemplates }) {
                 )}
               </Space>
             </div>
-            <div style={{ fontSize: 12, color: "#666", marginBottom: 8, whiteSpace: "pre-wrap" }}>
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 4, whiteSpace: "pre-wrap" }}><span style={{ color: "#999" }}>旁白：</span>
               {nar.voice_script?.substring(0, 60)}{(nar.voice_script?.length > 60) ? "..." : ""}
             </div>
+            {editingSceneIndex === (mediaId + "_" + si) ? (
+              <div style={{ marginBottom: 4 }}>
+                <TextArea value={editSceneText} onChange={e => setEditSceneText(e.target.value)} rows={3} style={{ fontSize: 12, marginBottom: 4 }} />
+                <Space size="small">
+                  <Button size="small" type="primary" onClick={() => { const p = editSceneText; setScenes(prev => prev.map((s,idx) => idx===i ? {...s, scene_prompt: p} : s)); setEditingSceneIndex(-1) }}>保存</Button>
+                  <Button size="small" onClick={() => setEditingSceneIndex(-1)}>取消</Button>
+                </Space>
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>
+                <span style={{ color: "#999" }}>提示词：</span>
+                {(scenes[i]?.scene_prompt || "").substring(0, 80)}{(scenes[i]?.scene_prompt?.length > 80) ? "..." : ""}
+                <Button size="small" type="link" style={{ padding: 0, height: 20, fontSize: 11 }} onClick={() => { setEditingSceneIndex(mediaId + "_" + si); setEditSceneText(scenes[i]?.scene_prompt || "") }}>编辑</Button>
+              </div>
+            )}
             {prog?.status === "generating" && <Progress percent={prog.progress || 0} size="small" status="active" />}
             {prog?.status === "done" && prog.video_path && (
               <video controls style={{ width: "100%", maxHeight: 200, borderRadius: 8 }} src={"http://localhost:8000/uploads/" + prog.video_path.split(/[\\/]/).pop()} />

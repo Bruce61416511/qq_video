@@ -42,6 +42,9 @@ async def generate_video_clip(prompt: str, duration: str = "5", size: str = "9:1
         "cogvideo": _cogvideo_generate,
     }
 
+    # Append negative prompt to prevent text/subtitles in generated video
+    prompt = prompt + " --no text, words, letters, numbers, subtitles, watermark, UI elements, labels"
+
     handler = handlers.get(service)
     if handler:
         try:
