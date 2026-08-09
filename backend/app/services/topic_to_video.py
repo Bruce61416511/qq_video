@@ -321,6 +321,10 @@ def get_topic_data():
         try:
             data = json.loads(TOPIC_JSON_FILE.read_text(encoding="utf-8"))
             _last_topics = data.get("topics", [])
+            # Ensure each topic has a duration field
+            for t in _last_topics:
+                if "duration" not in t or not t["duration"]:
+                    t["duration"] = 40
             return {"topics": _last_topics, "generated_at": data.get("generated_at")}
         except:
             pass

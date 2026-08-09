@@ -24,7 +24,7 @@ async def compose_video(
     return await _concat_clips(clips, output_path, size, resolution)
 
 
-def _generate_ass(clips: list[dict]):
+def _generate_ass(clips: list[dict], durations: list[tuple] = None):
     """Generate ASS subtitle file.
     
     Subtitles are split by fixed character count (default 12 chars/line),
@@ -35,7 +35,7 @@ def _generate_ass(clips: list[dict]):
     Returns path or None.
     """
     chars_per_line = 12
-    chars_per_second = 4.5
+    chars_per_second = 4.0
     subtitle_delay = 0.15   # 150ms delay so voice starts before text appears
     
     has_any = any(c.get("subtitle", "").strip() for c in clips)
@@ -57,17 +57,16 @@ def _generate_ass(clips: list[dict]):
     ]
 
     cumulative = 0.0
-    for c in clips:
+    for i, c in enumerate(clips):
         sub_text = c.get("subtitle", "").strip()
-        # Use actual video duration for subtitle timing, fallback to declared duration
-        clip_dur = _probe_duration(c.get("video_path", ""))
-        if clip_dur <= 0:
-            clip_dur = float(c.get("duration", 5))
-        # Probe actual audio duration for subtitle sync
-        audio_dur = 0.0
-        audio_path = c.get("audio_path", "")
-        if audio_path:
-            audio_dur = _probe_duration(audio_path)
+        # Use pre-probed durations if available, otherwise probe now
+        if durations and i < len(durations):
+            clip_dur, audio_dur = durations[i]
+        else:
+            clip_dur = _probe_duration(c.get("video_path", ""))
+            if clip_dur <= 0:
+                clip_dur = float(c.get("duration", 5))
+            audio_dur = _probe_duration(c.get("audio_path", ""))
         # Use audio duration if available, otherwise fall back to chars_per_second estimate
         if audio_dur <= 0:
             audio_dur = sum(len(s) for s in _split_by_chars(sub_text, chars_per_line)) / chars_per_second if sub_text else 0
@@ -179,7 +178,19 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
     if not valid_clips:
         return {"ok": False, "error": "没有有效视频片段"}
     try:
-        ass_file = _generate_ass(valid_clips)
+        # Pre-probe all durations once (video + audio per clip)
+        probed_durations = []
+        for i, c in enumerate(valid_clips):
+            vdur = _probe_duration(c.get("video_path", ""))
+            if vdur <= 0:
+                vdur = float(c.get("duration", 5))
+            adur = _probe_duration(c.get("audio_path", ""))
+            probed_durations.append((vdur, adur))
+            # Warn if audio significantly exceeds video (will be truncated)
+            if adur > 0 and vdur > 0 and adur > vdur * 1.2:
+                overflow_pct = int((adur - vdur) / vdur * 100)
+                print(f"[Composer] WARNING: shot {i+1} audio ({adur:.1f}s) exceeds video ({vdur:.1f}s) by {overflow_pct}% -> audio will be truncated")
+        ass_file = _generate_ass(valid_clips, probed_durations)
         cmd = ["ffmpeg", "-y"]
         filter_parts = []
         v_indices = []
@@ -192,13 +203,10 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
             vf = f"[{vi}:v]{scale},setsar=1"
             filter_parts.append(f"{vf}[v{vi}]")
             audio_path = c.get("audio_path", "")
-            # Use actual video duration for alignment, not declared duration
-            real_dur = _probe_duration(c["video_path"])
-            clip_dur = real_dur if real_dur > 0 else float(c.get("duration", 5))
+            clip_dur = probed_durations[i][0]
             if audio_path and os.path.exists(audio_path):
                 ai = len([x for x in cmd if x == "-i"])
                 cmd.extend(["-i", audio_path])
-                # Pad audio to actual video duration so each audio aligns with its shot
                 filter_parts.append(f"[{ai}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad=whole_dur={clip_dur}[a_pad_{i}]")
                 a_labels.append(f"[a_pad_{i}]")
             else:

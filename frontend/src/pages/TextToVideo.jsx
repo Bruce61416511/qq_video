@@ -182,7 +182,7 @@ export default function TextToVideo() {
     const outlineLen = t.content_outline?.length || 3
     const isStructured = t.content_outline?.length > 0 && typeof t.content_outline[0] === 'object'
     setShotCount(isStructured ? outlineLen : outlineLen + 2)
-    setShotDuration(String(Math.max(3, Math.floor(totalDur / (isStructured ? outlineLen : outlineLen + 2)))))
+    setShotDuration(String(Math.max(3, Math.floor((t.duration || 45) / (isStructured ? outlineLen : outlineLen + 2)))))
   }
 
   // Step 2 - shots

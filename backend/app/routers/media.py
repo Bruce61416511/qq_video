@@ -96,7 +96,8 @@ async def generate_shots_from_topic(data: dict = Body(...)):
         total_duration=total_duration,
         competitor_framework=data.get("competitor_framework", ""),
     )
-    return {"shots": shots}
+    is_fallback = any(s.get("fallback") for s in shots)
+    return {"shots": shots, "fallback": is_fallback}
 
 
 @router.post("/generate-shots-preview")
@@ -180,7 +181,7 @@ async def generate_shots(data: dict = Body(...)):
     competitor_framework = data.get("competitor_framework", "")
 
     count = max(1, min(int(shot_count), 10))
-    dur = str(shot_duration) if str(shot_duration) in ("3","5","10","15","30","60") else "5"
+    dur = str(shot_duration)
 
     shots = await generate_shot_plan(topic, count, dur, competitor_framework)
     # Ensure duration is set on each shot
@@ -188,7 +189,8 @@ async def generate_shots(data: dict = Body(...)):
         if "duration" not in s:
             s["duration"] = dur
 
-    return {"shots": shots}
+    is_fallback = any(s.get("fallback") for s in shots)
+    return {"shots": shots, "fallback": is_fallback}
 
 
 @router.post("/generate", response_model=MediaOut)
@@ -270,17 +272,38 @@ async def _do_run_pipeline(media_id: int, req: VideoGenerateRequest):
         # Video generation phase
         await _update_shot_status(media_id, shot_index, "video")
 
+        # Clamp shot duration to Wan API limits (5-15s)
+        target_dur = int(shot.duration)
+        if target_dur > 15:
+            print(f"[Pipeline] shot {shot_index}: duration {target_dur}s clamped to 15s (Wan max)")
+            target_dur = 15
+        elif target_dur < 5:
+            print(f"[Pipeline] shot {shot_index}: duration {target_dur}s clamped to 5s (Wan min)")
+            target_dur = 5
+        shot.duration = str(target_dur)  # update in-memory for consistent duration
+
         # Generate video clip with progress tracking
         async def update_progress(pct):
             await _update_shot(media_id, shot_index, progress=pct)
 
-        video_result = await generate_video_clip(
-            prompt=shot.scene_prompt,
-            duration=shot.duration,
-            size=req.size,
-            resolution=req.resolution,
-            progress_callback=update_progress,
-        )
+        # Video generation with up to 2 retries on failure
+        max_retries = 2
+        video_result = None
+        for retry in range(max_retries + 1):
+            if retry > 0:
+                print(f"[Pipeline] shot {shot_index}: retry {retry}/{max_retries}")
+                await _update_shot_status(media_id, shot_index, "video")
+            video_result = await generate_video_clip(
+                prompt=shot.scene_prompt,
+                duration=str(target_dur),
+                size=req.size,
+                resolution=req.resolution,
+                progress_callback=update_progress if retry == 0 else None,
+            )
+            if isinstance(video_result, dict) and video_result.get("status") == "done":
+                break
+            if isinstance(video_result, dict) and video_result.get("status") == "no_api":
+                break  # don't retry if no API key configured
 
         clip = {
             "video_path": "",
@@ -292,14 +315,12 @@ async def _do_run_pipeline(media_id: int, req: VideoGenerateRequest):
         if isinstance(video_result, dict):
             if video_result.get("status") == "done" and video_result.get("url"):
                 await _update_shot_status(media_id, shot_index, "downloading")
-                # Download video from URL
                 clip["video_path"] = await _download_video(video_result["url"], media_id, shot_index)
             elif video_result.get("status") == "no_api":
                 print(f"[Pipeline] shot {shot_index}: {video_result.get('message')}")
-                # No API key - create placeholder
                 clip["video_path"] = await _create_placeholder_clip(shot.scene_prompt, shot.duration, req.size)
             else:
-                print(f"[Pipeline] shot {shot_index}: error - {video_result.get('message')}")
+                print(f"[Pipeline] shot {shot_index}: failed after {max_retries} retries - {video_result.get('message')}")
                 clip["video_path"] = await _create_placeholder_clip(shot.scene_prompt, shot.duration, req.size)
         else:
             clip["video_path"] = str(video_result) if video_result else ""

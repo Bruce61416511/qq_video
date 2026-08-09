@@ -210,6 +210,14 @@ def build_topic_user_message(
             _angle_directive = av
             break
 
+    # Build per-shot word budget instructions
+    budget_lines = []
+    for i in range(shot_count):
+        role = ["钩子镜", "中间镜", "中间镜", "中间镜", "尾镜"][min(i, 4)] if shot_count <= 5 else f"镜{i+1}"
+        if i == 0: role = "钩子镜"
+        elif i == shot_count - 1: role = "尾镜"
+        budget_lines.append(f"镜{i+1}（{role}）：{shot_durations[i]}s → 按 4.0字/秒自行计算目标字数")
+
     user_content = f"""视频选题：{video_topic}
 黄金3秒：{hook}
 总时长：{total_duration}s
@@ -217,7 +225,8 @@ def build_topic_user_message(
 内容要点：
 {outline_text}
 
-分镜规划：共{shot_count}镜，总时长{total_duration}s，LLM 按分镜提示词中的时长规则自行分配每镜秒数
+【镜X时长分配】（每镜时长已定，按 4.0字/秒 自行计算所需字数）
+{chr(10).join(budget_lines)}
 
 【必须执行的创作指令】
 - 钩子类型={hook_type}：{_hook_directive}
@@ -331,15 +340,31 @@ async def generate_shot_plan_from_topic(
     # Structured outlines (dicts) already include hook+cta; legacy strings need +2 wrappers
     is_structured = content_outline and isinstance(content_outline[0], dict)
     shot_count = outline_count if is_structured else outline_count + 2
-    base_dur = max(3, total_duration // shot_count)
-    hook_dur = min(base_dur, 5)  # 黄金3秒不超过5秒
-    end_dur = base_dur
-    mid_dur = (total_duration - hook_dur - end_dur) // outline_count if outline_count > 0 else base_dur
-
-    if is_structured:
-        prompt = TOPIC_SHOT_PROMPT.replace("{hook_dur}", "≤5").replace("{mid_dur}", "4~15").replace("{end_dur}", "5~10")
+    # Pre-allocate durations: hook=5s, cta=min(10, remaining), middle shots equally divide rest
+    # All clamped to [5, 15] range
+    hook_dur = min(5, max(5, total_duration // shot_count))
+    end_dur = min(10, max(5, total_duration // shot_count))
+    mid_count = shot_count - 2 if shot_count > 2 else 0
+    remaining = total_duration - hook_dur - end_dur
+    if mid_count > 0:
+        mid_dur = max(5, min(15, remaining // mid_count))
     else:
-        prompt = TOPIC_SHOT_PROMPT.replace("{hook_dur}", str(hook_dur)).replace("{mid_dur}", str(mid_dur)).replace("{end_dur}", str(end_dur))
+        mid_dur = 0
+        end_dur = min(15, total_duration - hook_dur)
+
+    # Pre-allocate shot durations
+    shot_durations = []
+    for i in range(shot_count):
+        if i == 0:
+            dur = hook_dur
+        elif i == shot_count - 1:
+            dur = end_dur
+        else:
+            dur = mid_dur
+        dur = max(5, min(15, dur))
+        shot_durations.append(dur)
+
+    prompt = TOPIC_SHOT_PROMPT
 
     outline_text = _format_outline_text(content_outline)
 
@@ -383,6 +408,14 @@ async def generate_shot_plan_from_topic(
             _angle_directive = av
             break
 
+    # Build per-shot word budget instructions
+    budget_lines = []
+    for i in range(shot_count):
+        role = ["钩子镜", "中间镜", "中间镜", "中间镜", "尾镜"][min(i, 4)] if shot_count <= 5 else f"镜{i+1}"
+        if i == 0: role = "钩子镜"
+        elif i == shot_count - 1: role = "尾镜"
+        budget_lines.append(f"镜{i+1}（{role}）：{shot_durations[i]}s → 按 4.0字/秒自行计算目标字数")
+
     user_content = f"""视频选题：{video_topic}
 黄金3秒：{hook}
 总时长：{total_duration}s
@@ -390,7 +423,8 @@ async def generate_shot_plan_from_topic(
 内容要点：
 {outline_text}
 
-分镜规划：共{shot_count}镜，总时长{total_duration}s，LLM 按分镜提示词中的时长规则自行分配每镜秒数
+【镜X时长分配】（每镜时长已定，按 4.0字/秒 自行计算所需字数）
+{chr(10).join(budget_lines)}
 
 【必须执行的创作指令】
 - 钩子类型={hook_type}：{_hook_directive}
@@ -494,13 +528,15 @@ async def generate_shot_plan_from_topic(
 
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": user_content},
+    ]
+
     try:
         response = await client.chat.completions.create(
             model=model,
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": user_content},
-            ],
+            messages=messages,
             temperature=0.7,
             max_tokens=4000,
         )
@@ -509,27 +545,34 @@ async def generate_shot_plan_from_topic(
         if json_match:
             shots = json.loads(json_match.group())
             for i, s in enumerate(shots):
-                if is_structured:
-                    # Use LLM's own duration; only fill missing
-                    if "duration" not in s or not s["duration"]:
-                        s["duration"] = str(base_dur)
-                else:
-                    if i == 0:
-                        s["duration"] = str(hook_dur)
-                    elif i == len(shots) - 1:
-                        s["duration"] = str(end_dur)
-                    else:
-                        s["duration"] = str(mid_dur)
-                # Sync scene_prompt 【Xs】 with duration
+                # Strip 【Xs】 if LLM ignored the instruction
                 sp = s.get("scene_prompt", "")
-                if sp:
-                    dur_match = re.search(r'【(\d+)[s秒]】', sp)
-                    if dur_match:
-                        s["duration"] = dur_match.group(1)
+                if sp and re.search(r'[【]\d+[sS秒][】]', sp[:10]):
+                    s["scene_prompt"] = re.sub(r'[【]\d+[sS秒][】]\s*', '', sp)
+                    print(f"[ShotPlan] shot {i+1}: stripped 【Xs】 from scene_prompt")
+                if i == 0:
+                    s["duration"] = str(hook_dur)
+                elif i == len(shots) - 1:
+                    s["duration"] = str(end_dur)
+                else:
+                    s["duration"] = str(mid_dur)
+
+            # Clean numbered-list patterns from voice_script (LLM may copy outline numbers)
+            for s in shots:
+                vs = s.get("voice_script", "")
+                if vs:
+                    import re as _re_clean
+                    # Strip leading "1. ", "2. ", "第一，" etc.
+                    cleaned = _re_clean.sub(r'^[\d一二三四五六七八九十]+[\.\,、\s)、]+', '', vs.strip())
+                    if cleaned != vs.strip():
+                        s["voice_script"] = cleaned
+                        print(f"[ShotPlan] cleaned numbered prefix from voice_script")
+
+            await _validate_voice_duration(shots)
             await _validate_voice_duration(shots)
             return shots
     except Exception as e:
-        pass
+        print(f"[ShotPlan] LLM call failed: {e}, using fallback")
 
     return _fallback_topic_shots(hook, content_outline, hook_dur, mid_dur, end_dur)
 
@@ -545,20 +588,25 @@ async def _validate_voice_duration(shots: list[dict]):
         if not script:
             continue
         char_count = len(script.replace(" ", ""))
+        # Compare LLM's self-reported vc with actual count
+        reported_vc = s.get("vc", 0)
+        if reported_vc and abs(reported_vc - char_count) > 3:
+            print(f"[Validate] Shot {i+1}: LLM reported vc={reported_vc} but actual={char_count} chars")
         expected_min = dur * 3
         expected_max = dur * 5
         target_len = dur * 4
 
         if char_count > expected_max:
-            sentences = script.split("。")
-            trimmed = script
-            while sentences and len(trimmed.replace(" ", "")) > target_len:
-                sentences.pop()
-                trimmed = "。".join(sentences)
-                if sentences:
-                    trimmed += "。"
-            if len(trimmed.replace(" ", "")) > target_len:
+            sentences = [s.strip() for s in script.split("。") if s.strip()]
+            if len(sentences) <= 1:
                 trimmed = script[:target_len] + "..."
+            else:
+                trimmed = "。".join(sentences)
+                while len(sentences) > 1 and len(trimmed.replace(" ", "")) > target_len:
+                    sentences.pop()
+                    trimmed = "。".join(sentences) + "。"
+                if len(trimmed.replace(" ", "")) > target_len:
+                    trimmed = script[:target_len] + "..."
             s["voice_script"] = trimmed
             print(f"[Validate] Shot {i+1}: truncated voice_script {char_count}->{len(trimmed.replace(' ', ''))} chars (dur={dur}s)")
 
@@ -602,24 +650,28 @@ async def _validate_voice_duration(shots: list[dict]):
 def _fallback_topic_shots(hook, outline, hook_dur, mid_dur, end_dur):
     """LLM 不可用时的降级模板。"""
     shots = []
+    print("[ShotPlan] WARNING: using fallback template - LLM unavailable")
     # 镜1：黄金3秒
     shots.append({
-        "scene_prompt": f"【{hook_dur}s】主持人正面中景，真诚注视镜头，暖色自然光，背景虚化居家环境",
+        "scene_prompt": "主体：暖色自然光下的居家环境\n动作：镜头缓缓推入，虚化背景聚焦生活细节\n场景：温馨居家环境，柔焦虚化\n光线：暖色自然侧光\n镜头：中景，缓慢推近\n风格：生活纪实\n画质：4K，浅景深",
         "voice_script": hook,
         "duration": str(hook_dur),
+        "fallback": True,
     })
     # 中间镜
     for i, point in enumerate(outline or []):
         shots.append({
-            "scene_prompt": f"【{mid_dur}s】要点{i+1}相关画面，字幕叠加关键词，暖色调，生活化场景",
+            "scene_prompt": f"主体：要点{i+1}相关元素\n动作：暖色光线下画面缓缓展开\n场景：生活化场景，柔焦背景\n光线：暖色调自然光\n镜头：中景，固定机位\n风格：纪实风格\n画质：4K，浅景深",
             "voice_script": point,
             "duration": str(mid_dur),
+            "fallback": True,
         })
     # 结尾
     shots.append({
-        "scene_prompt": f"【{end_dur}s】主持人微笑中景回归，暖光渐亮，字幕弹出关注引导",
+        "scene_prompt": "主体：暖色光线下居家环境\n动作：晨光渐亮洒在桌面，画面收束\n场景：温馨居家收尾\n光线：暖金柔光\n镜头：中景，缓慢拉远\n风格：温暖治愈\n画质：4K，浅景深",
         "voice_script": "关注我，每天一个健康小知识。",
         "duration": str(end_dur),
+        "fallback": True,
     })
     return shots
 

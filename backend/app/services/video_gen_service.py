@@ -138,10 +138,13 @@ async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, 
     # Map resolution (720P / 1080P)
     res = resolution if resolution in ("720P", "1080P") else "720P"
 
-    # Map duration
-    duration_map = {"3": 3, "5": 5, "10": 10, "15": 15, "30": 30}
-    dur = duration_map.get(duration, 5)
+    # Map duration to supported values, clamp to [5, 15]
+    try:
+        dur = int(duration)
+    except (ValueError, TypeError):
+        dur = 5
     if dur > 15:
+        print(f"[VideoGen] Wan: duration {duration}s clamped to 15s max")
         dur = 15
     if dur < 5:
         dur = 5
