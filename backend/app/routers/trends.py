@@ -1,4 +1,4 @@
-﻿"""热点洞察 API 路由。"""
+"""热点洞察 API 路由。"""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -214,8 +214,6 @@ async def topic_report():
 PROMPT_FILES = {
     "topic_to_video_prompt": "topic_to_video_prompt.txt",
     "competitor_analysis_prompt": "competitor_analysis_prompt.txt",
-    "shot_topic_prompt": "shot_topic_prompt.txt",
-    "manual_topic_prompt": "manual_topic_prompt.txt",
     "narration_prompt": "narration_prompt.txt",
     "scene_prompt": "scene_prompt.txt",
     "topic_outline_creation_prompt": "topic_outline_creation_prompt.txt",
@@ -258,8 +256,6 @@ async def list_config_files():
                 "frequency_words": "根据关键词筛选热搜（关键词模式专用）",
                 "ai_analysis_prompt": "AI 情报分析提示词（当前未启用）",
                 "topic_to_video_prompt": "视频选题提示词：热搜转为可拍摄选题",
-                "shot_topic_prompt": "选题拆镜提示词：从选题自动生成分镜方案",
-                "manual_topic_prompt": "手动拆镜提示词：用户输入主题时生成分镜",
                 "competitor_analysis_prompt": "竞品拆解提示词：分析竞品视频输出框架",
             }.get(key, ""),
         })

@@ -1,4 +1,4 @@
-﻿"""
+"""
 LLM 分镜策划服务
 参考 MoneyPrinterTurbo: app/services/llm.py
 支持 OpenAI / DeepSeek / 通义千问 / 智谱 等兼容接口
@@ -58,9 +58,7 @@ def _load_prompt(filename: str, fallback: str) -> str:
         return p.read_text(encoding="utf-8-sig").strip()
     return fallback
 
-SYSTEM_PROMPT = _load_prompt(
-    "manual_topic_prompt.txt",
-    """你是一个资深短视频策划导演，专精食品、健康、养生赛道。将用户给定的主题拆解为专业分镜脚本。
+SYSTEM_PROMPT = """你是一个资深短视频策划导演，专精食品、健康、养生赛道。将用户给定的主题拆解为专业分镜脚本。
 
 ## 硬性约束
 
@@ -126,12 +124,10 @@ SYSTEM_PROMPT = _load_prompt(
     "voice_script": "酸甜带气，清爽解腻。左下角试试吧。"
   }
 ]"""
-)
 
 
-TOPIC_SHOT_PROMPT = _load_prompt(
-    "shot_topic_prompt.txt",
-    """你是一个短视频分镜导演。根据给定的选题结构生成分镜脚本。
+
+TOPIC_SHOT_PROMPT = """你是一个短视频分镜导演。根据给定的选题结构生成分镜脚本。
 
 ## 分镜规则
 - 镜1（{hook_dur}s）：直接使用黄金3秒文案作为配音，生成对应的画面提示词
@@ -149,7 +145,7 @@ TOPIC_SHOT_PROMPT = _load_prompt(
 - scene_prompt 以【Xs】开头标注时长
 - 画风：暖色调、生活化、接地气
 - 配音：口语化、像朋友聊天"""
-)
+
 
 def build_topic_user_message(
     video_topic: str,
