@@ -48,7 +48,7 @@ export default function TextToVideo() {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewData, setPreviewData] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState("video")
+  const [activeTab, setActiveTab] = useState("script-first")
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false)
   const [editingFile, setEditingFile] = useState(null)
   const [editingContent, setEditingContent] = useState("")
