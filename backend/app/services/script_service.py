@@ -142,13 +142,13 @@ async def generate_narration(outline: list, competitor_framework: str = "", tota
         raise RuntimeError("narration_prompt.txt 缺失")
 
     # 中文 TTS 约 4 字/秒，按比例分配字数
-    hook_chars = max(20, int(total_duration * 0.25 * 4))
-    evidence_chars = max(30, int(total_duration * 0.33 * 4))
-    scene_chars = max(30, int(total_duration * 0.30 * 4))
+    hook_chars = max(20, int(total_duration * 0.22 * 4))
+    evidence_chars = max(30, int(total_duration * 0.28 * 4))
+    scene_chars = max(30, int(total_duration * 0.26 * 4))
     cta_chars = max(15, total_duration * 4 - hook_chars - evidence_chars - scene_chars)
 
     outline_text = _format_outline_for_narration(outline)
-    user_message = f"选题大纲：\n{outline_text}\n\n目标总时长：{total_duration}s（约{total_duration * 4}字）\n每镜目标字数：hook({hook_chars}字) / evidence({evidence_chars}字) / scene({scene_chars}字) / cta({cta_chars}字)"
+    user_message = f"选题大纲：\n{outline_text}\n\n目标总时长：{total_duration}s（约{total_duration * 4}字）\n每镜目标字数：hook({hook_chars}字) / evidence({evidence_chars}字) / scene({scene_chars}字) / cta({cta_chars}字)\n\n硬性要求：每段字数严禁超出目标20%以上，超出视为不合格。宁可精简内容，不可超字数。"
     if golden_hook:
         user_message += f"\n\n黄金钩子：{golden_hook}\n（请在 hook 段旁白中直接复述这句钩子）"
     if competitor_framework:
