@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Card, Input, Button, InputNumber, Space, Tag, Alert, Progress, message, Steps, Typography, Tabs } from 'antd'
-import { EditOutlined, ThunderboltOutlined, PlusOutlined, DeleteOutlined, AudioOutlined, PictureOutlined, ArrowLeftOutlined } from '@ant-design/icons'
+import { Card, Input, Button, InputNumber, Space, Tag, Alert, Progress, message, Steps, Typography, Tabs, Modal } from 'antd'
+import { EditOutlined, ThunderboltOutlined, DeleteOutlined, AudioOutlined, PictureOutlined, ArrowLeftOutlined, CopyOutlined } from '@ant-design/icons'
 
 const { TextArea } = Input
 const { Text, Title } = Typography
@@ -100,12 +100,13 @@ export default function KepuTab() {
     const u = narrations.filter((_, j) => j !== i).map((n, j) => ({ ...n, index: j }))
     setNarrations(u)
   }
-  const handleAdd正文 = () => {
-    const hook = narrations[0], ending = narrations[narrations.length - 1]
-    const bodyNars = narrations.slice(1, -1)
-    const new正文 = { voice_script: '', stage: 'body', index: bodyNars.length + 1 }
-    const u = [hook, ...bodyNars, new正文, ending].map((n, j) => ({ ...n, index: j }))
-    setNarrations(u)
+  const [concatVisible, setConcatVisible] = useState(false)
+  const [concatText, setConcatText] = useState('')
+
+  const handleConcat = () => {
+    const text = narrations.filter(n => n.voice_script.trim()).map(n => n.voice_script).join('\n\n')
+    setConcatText(text)
+    setConcatVisible(true)
   }
 
   const handleTts = async () => {
@@ -241,6 +242,7 @@ export default function KepuTab() {
       )}
 
       {current === 1 && (
+        <>
         <Card title={'旁白分镜 (' + narrations.length + ' 镜, 总时长约' + (narrations.reduce((s, n) => s + n.voice_script.length, 0) / 4.8).toFixed(0) + '秒)'}
           extra={<Button size="small" onClick={() => setCurrent(0)} icon={<ArrowLeftOutlined />}>返回</Button>}
           style={{ maxWidth: 700 }}>
@@ -269,10 +271,19 @@ export default function KepuTab() {
             </div>
           ))}
           <Space style={{ marginTop: 8 }}>
-            <Button icon={<PlusOutlined />} onClick={handleAdd正文}>Add 正文 Shot</Button>
+            <Button icon={<CopyOutlined />} onClick={handleConcat}>串联旁白</Button>
             <Button type="primary" icon={<AudioOutlined />} onClick={handleTts} loading={loading}>生成TTS</Button>
           </Space>
         </Card>
+        <Modal title="串联旁白" open={concatVisible} onCancel={() => setConcatVisible(false)} footer={[
+          <Button key="copy" type="primary" onClick={() => { navigator.clipboard.writeText(concatText); message.success('已复制') }}>复制全文</Button>,
+          <Button key="close" onClick={() => setConcatVisible(false)}>关闭</Button>
+        ]} width={600}>
+          <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 2, maxHeight: 400, overflow: 'auto', background: '#fafafa', padding: 16, borderRadius: 8 }}>
+            {concatText}
+          </div>
+        </Modal>
+        </>
       )}
 
       {current === 2 && (
