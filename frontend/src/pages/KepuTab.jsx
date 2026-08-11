@@ -54,6 +54,17 @@ export default function KepuTab() {
     localStorage.setItem('kepu_state', JSON.stringify(state))
   }, [loaded, topic, shotCount, current, narrations, ttsResults, scenes])
 
+  const handleReset = () => {
+    setTopic('')
+    setShotCount(3)
+    setNarrations([])
+    setTtsResults([])
+    setScenes([])
+    setCurrent(0)
+    localStorage.removeItem('kepu_state')
+    message.info('已清除全部数据')
+  }
+
   const handleGenerateScript = async () => {
     if (!topic.trim()) { message.warning('请输入话题'); return }
     setLoading(true)
@@ -71,6 +82,8 @@ export default function KepuTab() {
         { voice_script: data.script.ending, stage: 'ending', index: data.script.body.length + 1 },
       ]
       setNarrations(nars)
+      setTtsResults([])
+      setScenes([])
       setCurrent(1)
       message.success('剧本生成成功')
     } catch (e) {
@@ -195,7 +208,17 @@ export default function KepuTab() {
       )}
 
       {tabMode === 'studio' && (<>
-      <Steps current={current} onChange={setCurrent} items={stepItems} style={{ maxWidth: 700, marginBottom: 32, cursor: 'pointer' }} />
+      <Steps current={current} onChange={(step) => {
+  const canAccess = [true, narrations.length > 0, ttsResults.length > 0, scenes.length > 0]
+  if (canAccess[step] || step < current) setCurrent(step)
+}} items={stepItems.map((item, i) => {
+  const canAccess = [true, narrations.length > 0, ttsResults.length > 0, scenes.length > 0]
+  return { ...item, disabled: !canAccess[i] && i > current }
+})} style={{ maxWidth: 700, marginBottom: 32 }} />
+
+      <div style={{ maxWidth: 700, marginBottom: 16, textAlign: 'right' }}>
+        <Button size='small' danger onClick={handleReset}>复位</Button>
+      </div>
 
       {current === 0 && (
         <Card title="话题输入" style={{ maxWidth: 700 }}>
@@ -262,6 +285,7 @@ export default function KepuTab() {
               <div key={i} style={{ marginBottom: 12, padding: 12, borderRadius: 8, border: '1px solid #e8e8e8', background: '#fafafa' }}>
                 <Space><Tag color="blue">第 {i + 1} 分镜</Tag>{tts && <Tag color="green">{tts.duration}s</Tag>}</Space>
                 <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>{nar.voice_script.substring(0, 60)}...</div>
+                {tts?.audio_path && <audio controls style={{ width: '100%', marginTop: 8, height: 32 }} src={'http://localhost:8000' + tts.audio_path} />}
               </div>
             )
           })}
