@@ -149,4 +149,114 @@ async def generate_scenes(narrations: list[dict], durations: list[float]) -> lis
     result = _extract_json(raw)
     if not result or not isinstance(result, list):
         raise RuntimeError(f"LLM 未返回有效分镜 JSON 数组: {raw[:200]}")
-    return result
+    return result# ══════════════════════════════════
+# Step 4: 分镜提示词 → AI 视频片段
+# ══════════════════════════════════
+
+async def generate_kepu_clips(
+    scenes: list[dict],
+    durations: list[float],
+    size: str = "9:16",
+    resolution: str = "1080P",
+) -> list[dict]:
+    """为每个分镜调用 AI 视频生成服务，返回 [{"video_path": ..., "prompt": ...}, ...]"""
+    from .video_gen_service import generate_video_clip
+    import time
+
+    clips = []
+    for i, scene in enumerate(scenes):
+        scene_prompt = scene.get("scene_prompt", "")
+        if not scene_prompt:
+            clips.append({"video_path": "", "prompt": "", "error": "empty prompt"})
+            continue
+        # 合并多行 scene_prompt 为单行
+        prompt = scene_prompt.replace("\n", "，").strip()
+        dur_str = str(max(5, min(15, int(durations[i] if i < len(durations) else 5))))
+        print(f"[Kepu] Generating clip {i+1}/{len(scenes)}, duration={dur_str}s")
+        result = await generate_video_clip(prompt, duration=dur_str, size=size, resolution=resolution)
+        if isinstance(result, dict):
+            clips.append({
+                "index": i,
+                "video_path": result.get("url", ""),
+                "prompt": prompt,
+                "status": result.get("status", "error"),
+                "message": result.get("message", ""),
+            })
+        else:
+            clips.append({"index": i, "video_path": str(result), "prompt": prompt, "status": "done"})
+        # 避免并发过高，间隔一下
+        time.sleep(0.5)
+    return clips
+
+
+# ══════════════════════════════════
+# Step 5: 全流程编排
+# ══════════════════════════════════
+
+async def run_kepu_pipeline(
+    topic: str,
+    shot_count: int = 3,
+    voice_id: str = None,
+    size: str = "9:16",
+    resolution: str = "1080P",
+) -> dict:
+    """科普视频一键全流程：话题 → 剧本 → TTS → 分镜 → 视频片段 → 合成"""
+    import uuid
+
+    # Step 1: 剧本
+    print(f"[Kepu] Step 1/5: 生成剧本, topic={topic[:30]}...")
+    script = await generate_script(topic, shot_count)
+
+    # Step 2: 构建旁白数组 + TTS
+    print(f"[Kepu] Step 2/5: TTS 合成...")
+    narrations = [{"voice_script": script["hook"], "stage": "hook"}]
+    for body_text in script["body"]:
+        narrations.append({"voice_script": body_text, "stage": "body"})
+    narrations.append({"voice_script": script["ending"], "stage": "ending"})
+
+    tts_results = await synthesize_tts(narrations, voice_id)
+    durations = [r["duration"] for r in tts_results]
+
+    # Step 3: 分镜提示词
+    print(f"[Kepu] Step 3/5: 生成分镜提示词, {len(narrations)} 镜...")
+    scenes = await generate_scenes(narrations, durations)
+
+    # Step 4: AI 视频片段
+    print(f"[Kepu] Step 4/5: AI 视频生成...")
+    clips = await generate_kepu_clips(scenes, durations, size=size, resolution=resolution)
+
+    # 构建视频+音频素材列表
+    from pathlib import Path
+    composed_clips = []
+    for i in range(len(narrations)):
+        audio_path = ""
+        audio_rel = tts_results[i].get("audio_path", "") if i < len(tts_results) else ""
+        if audio_rel:
+            # tts_results 里的 audio_path 已经是 /uploads/audio/xxx.mp3 格式
+            from ..config import UPLOAD_DIR
+            full_audio = UPLOAD_DIR.parent / audio_rel.lstrip("/")
+            if full_audio.exists():
+                audio_path = str(full_audio)
+        clip_info = clips[i] if i < len(clips) else {}
+        composed_clips.append({
+            "video_path": clip_info.get("video_path", ""),
+            "audio_path": audio_path,
+            "subtitle": narrations[i].get("voice_script", ""),
+            "duration": durations[i] if i < len(durations) else 5,
+        })
+
+    # Step 5: 合成
+    print(f"[Kepu] Step 5/5: 视频合成...")
+    from .video_composer import compose_video
+    output_path = str(UPLOAD_DIR / f"kepu_{uuid.uuid4().hex}.mp4")
+    comp_result = await compose_video(composed_clips, output_path, size=size, resolution=resolution)
+
+    return {
+        "script": script,
+        "scenes": scenes,
+        "narrations": narrations,
+        "tts_segments": tts_results,
+        "clips": clips,
+        "compose": comp_result,
+        "video_path": comp_result.get("path", ""),
+    }

@@ -72,3 +72,53 @@ async def save_prompts(data: dict = Body(...)):
         p = prompt_dir / name
         p.write_text(text, encoding="utf-8")
     return {"status": "ok"}
+
+
+@router.post("/generate")
+async def kepu_generate(data: dict = Body(...)):
+    """科普视频一键生成：话题 → 完整视频"""
+    topic = data.get("topic", "").strip()
+    shot_count = int(data.get("shot_count", 3))
+    voice_id = data.get("voice", None)
+    size = data.get("size", "9:16")
+    resolution = data.get("resolution", "1080P")
+
+    if not topic:
+        raise HTTPException(400, "topic 参数不能为空")
+
+    try:
+        from ..services.kepu_service import run_kepu_pipeline
+        result = await run_kepu_pipeline(
+            topic=topic,
+            shot_count=shot_count,
+            voice_id=voice_id,
+            size=size,
+            resolution=resolution,
+        )
+        return {
+            "ok": True,
+            "script": result["script"],
+            "video_path": result["video_path"],
+            "compose": result["compose"],
+        }
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/generate-video")
+async def kepu_generate_video(data: dict = Body(...)):
+    """已有分镜 → AI 视频片段"""
+    scenes = data.get("scenes", [])
+    durations = data.get("durations", [])
+    size = data.get("size", "9:16")
+    resolution = data.get("resolution", "1080P")
+
+    if not scenes:
+        raise HTTPException(400, "scenes 参数不能为空")
+
+    try:
+        from ..services.kepu_service import generate_kepu_clips
+        clips = await generate_kepu_clips(scenes, durations, size=size, resolution=resolution)
+        return {"ok": True, "clips": clips}
+    except Exception as e:
+        raise HTTPException(500, str(e))
