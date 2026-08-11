@@ -148,7 +148,7 @@ async def generate_narration(outline: list, competitor_framework: str = "", tota
     cta_chars = max(15, total_duration * 4 - hook_chars - evidence_chars - scene_chars)
 
     outline_text = _format_outline_for_narration(outline)
-    user_message = f"选题大纲：\n{outline_text}\n\n目标总时长：{total_duration}s（约{total_duration * 4}字）\n每镜目标字数：hook({hook_chars}字) / evidence({evidence_chars}字) / scene({scene_chars}字) / cta({cta_chars}字)\n\n硬性要求：每段字数严禁超出目标20%以上，超出视为不合格。宁可精简内容，不可超字数。"
+    user_message = f"以下是原始素材，不是成品旁白。请将每段素材压缩到目标字数后输出旁白。保留核心信息和画面感，删减重复和修饰词。\n\n{outline_text}\n\n目标总时长：{total_duration}s（约{total_duration * 4}字）\n每镜目标字数：hook({hook_chars}字) / evidence({evidence_chars}字) / scene({scene_chars}字) / cta({cta_chars}字)\n\n硬性要求：每段旁白严禁超过15秒语速上限（约72字），超出将导致视频被截断。宁可精简，不可超时。"
     if golden_hook:
         user_message += f"\n\n黄金钩子：{golden_hook}\n（请在 hook 段旁白中直接复述这句钩子）"
     if competitor_framework:
