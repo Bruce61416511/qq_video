@@ -848,7 +848,7 @@ function ScriptFirstTabInner({ videoTopics, competitorTemplates }) {
             <Text strong>分段大纲: </Text>
             {(outline.content_outline || []).map((item, i) => (
               <Tag key={i} style={{ marginTop: 4 }}>
-                {STAGE_LABELS[item.stage] || item.stage}: {item.point?.substring(0, 30)}...
+                {STAGE_LABELS[item.stage] || item.stage}: {item.point}
               </Tag>
             ))}
           </div>
