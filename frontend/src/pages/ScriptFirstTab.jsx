@@ -141,7 +141,9 @@ function ScriptFirstTabInner({ videoTopics, competitorTemplates }) {
         const tpl = competitorTemplates.find(t => t.id === selectedTemplateId)
         if (tpl) competitorFramework = tpl.framework
       }
-      const res = await mediaApi.scriptNarration(outlineList, competitorFramework)
+      const targetDur = selectedTopic?.duration || 40
+      const hook = selectedTopic?.hook || ''
+      const res = await mediaApi.scriptNarration(outlineList, competitorFramework, targetDur, hook)
       setNarrations(res.narrations)
       setOutline(selectedTopic)
       setCurrent(2)
@@ -165,7 +167,9 @@ function ScriptFirstTabInner({ videoTopics, competitorTemplates }) {
         const tpl = competitorTemplates.find(t => t.id === selectedTemplateId)
         if (tpl) competitorFramework = tpl.framework
       }
-      const res = await mediaApi.scriptNarration(outlineList, competitorFramework)
+      const targetDur = outline?.duration || 60
+      const hook = outline?.hook || ''
+      const res = await mediaApi.scriptNarration(outlineList, competitorFramework, targetDur, hook)
       setNarrations(res.narrations)
       setCurrent(2)
       message.success('旁白生成成功')
@@ -235,7 +239,8 @@ function ScriptFirstTabInner({ videoTopics, competitorTemplates }) {
         const tpl = competitorTemplates.find(t => t.id === selectedTemplateId)
         if (tpl) competitorFramework = tpl.framework
       }
-      const payload = { competitor_framework: competitorFramework }
+      const targetDur = inputMode === 'topic' ? (selectedTopic?.duration || 40) : 60
+      const payload = { competitor_framework: competitorFramework, total_duration: targetDur }
       if (inputMode === 'topic') {
         payload.topic = selectedTopic
       } else {

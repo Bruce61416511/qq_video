@@ -46,9 +46,9 @@ export const mediaApi = {
     method: 'POST',
     body: JSON.stringify({ text, competitor_framework: competitorFramework || '' }),
   }),
-  scriptNarration: (outline, competitorFramework) => request('/media/script-narration', {
+  scriptNarration: (outline, competitorFramework, totalDuration, hook) => request('/media/script-narration', {
     method: 'POST',
-    body: JSON.stringify({ outline, competitor_framework: competitorFramework || '' }),
+    body: JSON.stringify({ outline, competitor_framework: competitorFramework || '', total_duration: totalDuration || 60, hook: hook || '' }),
   }),
   scriptTts: (narrations, voice) => request('/media/script-tts', {
     method: 'POST',

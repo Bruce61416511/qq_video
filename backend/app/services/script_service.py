@@ -135,14 +135,22 @@ def _format_outline_for_narration(outline: list) -> str:
     return "\n".join(lines)
 
 
-async def generate_narration(outline: list, competitor_framework: str = "") -> list[dict]:
-    """从 outline 生成 4 段自然旁白（无字数约束）。"""
+async def generate_narration(outline: list, competitor_framework: str = "", total_duration: int = 60, golden_hook: str = "") -> list[dict]:
+    """从 outline 生成 4 段自然旁白（带字数约束）。"""
     prompt = _load_prompt("narration_prompt.txt")
     if not prompt:
         raise RuntimeError("narration_prompt.txt 缺失")
 
+    # 中文 TTS 约 4 字/秒，按比例分配字数
+    hook_chars = max(20, int(total_duration * 0.25 * 4))
+    evidence_chars = max(30, int(total_duration * 0.33 * 4))
+    scene_chars = max(30, int(total_duration * 0.30 * 4))
+    cta_chars = max(15, total_duration * 4 - hook_chars - evidence_chars - scene_chars)
+
     outline_text = _format_outline_for_narration(outline)
-    user_message = f"选题大纲：\n{outline_text}"
+    user_message = f"选题大纲：\n{outline_text}\n\n目标总时长：{total_duration}s（约{total_duration * 4}字）\n每镜目标字数：hook({hook_chars}字) / evidence({evidence_chars}字) / scene({scene_chars}字) / cta({cta_chars}字)"
+    if golden_hook:
+        user_message += f"\n\n黄金钩子：{golden_hook}\n（请在 hook 段旁白中直接复述这句钩子）"
     if competitor_framework:
         user_message += f"\n\n【竞品参考框架（风格/语感对齐）】\n{competitor_framework}"
 
@@ -257,6 +265,7 @@ async def script_generate(
     topic_data: dict = None,
     competitor_framework: str = "",
     voice_id: str = None,
+    total_duration: int = 60,
 ) -> dict:
     """
     一键 Script-First 全流程。
@@ -281,7 +290,8 @@ async def script_generate(
         raise ValueError("content_outline 为空，无法继续")
 
     # Step 1: 生成旁白
-    narrations = await generate_narration(outline_list, competitor_framework)
+    golden_hook = topic_data.get("hook", "") if topic_data else ""
+    narrations = await generate_narration(outline_list, competitor_framework, total_duration, golden_hook)
 
     # Step 2: TTS 合成
     tts_results = await synthesize_tts(narrations, voice_id)

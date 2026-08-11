@@ -1224,10 +1224,12 @@ async def script_narration(data: dict = Body(...)):
     from ..services.script_service import generate_narration
     outline = data.get("outline", [])
     competitor_framework = data.get("competitor_framework", "")
+    total_duration = int(data.get("total_duration", 60))
     if not outline:
         raise HTTPException(400, "outline 参数不能为空")
     try:
-        narrations = await generate_narration(outline, competitor_framework)
+        golden_hook = data.get("hook", "")
+        narrations = await generate_narration(outline, competitor_framework, total_duration, golden_hook)
         return {"narrations": narrations}
     except Exception as e:
         raise HTTPException(500, str(e))
@@ -1276,11 +1278,13 @@ async def script_generate_all(data: dict = Body(...)):
     if not free_text and not topic_data:
         raise HTTPException(400, "请提供 text 或 topic 参数")
     try:
+        total_duration = int(data.get("total_duration", 60))
         result = await script_generate(
             free_text=free_text,
             topic_data=topic_data,
             competitor_framework=competitor_framework,
             voice_id=voice_id,
+            total_duration=total_duration,
         )
         return result
     except Exception as e:
