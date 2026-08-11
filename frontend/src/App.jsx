@@ -20,7 +20,7 @@ const menuItems = [
   { key: "/", icon: <TeamOutlined />, label: "账号管理" },
   { key: "/trends", icon: <FireOutlined />, label: "热搜看板" },
   { key: "/competitor", icon: <ExperimentOutlined />, label: "爆款拆解" },
-  { key: "/text-to-video", icon: <ThunderboltOutlined />, label: "文生视频" },
+  { key: "/text-to-video", icon: <ThunderboltOutlined />, label: "产品创作" },
   { key: "/media", icon: <VideoCameraOutlined />, label: "素材管理" },
   { key: "/tasks", icon: <HistoryOutlined />, label: "发布记录" },
   { key: "/settings", icon: <SettingOutlined />, label: "设置" },
