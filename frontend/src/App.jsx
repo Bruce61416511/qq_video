@@ -2,13 +2,13 @@
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom"
 import { Layout, Menu, ConfigProvider, theme } from "antd"
 import {
-  TeamOutlined, VideoCameraOutlined, ThunderboltOutlined,
+  TeamOutlined, VideoCameraOutlined, ThunderboltOutlined, ExperimentOutlined, BulbOutlined,
   HistoryOutlined, SettingOutlined, FireOutlined,
-  ExperimentOutlined,
 } from "@ant-design/icons"
 import Accounts from "./pages/Accounts"
 import MediaLibrary from "./pages/MediaLibrary"
 import TextToVideo from "./pages/TextToVideo"
+import KepuTab from "./pages/KepuTab"
 import PublishTasks from "./pages/PublishTasks"
 import Settings from "./pages/Settings"
 import TrendBoard from "./pages/TrendBoard"
@@ -21,6 +21,7 @@ const menuItems = [
   { key: "/trends", icon: <FireOutlined />, label: "热搜看板" },
   { key: "/competitor", icon: <ExperimentOutlined />, label: "爆款拆解" },
   { key: "/text-to-video", icon: <ThunderboltOutlined />, label: "产品创作" },
+  { key: "/kepu", icon: <BulbOutlined />, label: "科普创作" },
   { key: "/media", icon: <VideoCameraOutlined />, label: "素材管理" },
   { key: "/tasks", icon: <HistoryOutlined />, label: "发布记录" },
   { key: "/settings", icon: <SettingOutlined />, label: "设置" },
@@ -136,6 +137,7 @@ export default function App() {
               <Route path="/competitor" element={<CompetitorAnalysis />} />
               <Route path="/media" element={<MediaLibrary />} />
               <Route path="/text-to-video" element={<TextToVideo />} />
+              <Route path="/kepu" element={<KepuTab />} />
               <Route path="/tasks" element={<PublishTasks />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
