@@ -311,3 +311,41 @@ async def verify_script(script: dict) -> dict:
     if not result:
         raise RuntimeError(f"事实核查 LLM 未返回有效 JSON: {raw[:200]}")
     return result
+
+
+# ════════════════════════════════════════
+# 新增：两步式剧本生成
+# ════════════════════════════════════════
+
+async def generate_full_script(topic: str, total_duration: int = 60) -> str:
+    """话题 + 总时长 → 连续旁白文稿（纯文本，不分镜）"""
+    prompt = _load_prompt("kepu_full_script_prompt.txt")
+    if not prompt:
+        raise RuntimeError("kepu_full_script_prompt.txt 缺失")
+
+    user_message = f"话题：{topic}\n视频总时长：{total_duration}秒（参考字数约{total_duration * 4}字，每秒4字）"
+    raw = await _call_llm(prompt, user_message, temperature=0.75, max_tokens=3000)
+    if not raw or len(raw.strip()) < 30:
+        raise RuntimeError("LLM 未生成有效剧本")
+    return raw.strip()
+
+
+async def split_full_script(full_text: str, shot_count: int) -> dict:
+    """连续文稿 → 按镜数拆成 {hook, body, ending}"""
+    prompt = _load_prompt("kepu_split_script_prompt.txt")
+    if not prompt:
+        raise RuntimeError("kepu_split_script_prompt.txt 缺失")
+
+    user_message = f"总镜头数：{shot_count}\n\n连续文稿：\n{full_text}"
+    raw = await _call_llm(prompt, user_message, temperature=0.3, max_tokens=2000)
+    result = _extract_json(raw)
+    if not result or "hook" not in result or "body" not in result:
+        raise RuntimeError(f"LLM 未返回有效分镜 JSON: {raw[:200]}")
+
+    def _clean(text: str) -> str:
+        return re.sub(r"[（\(]?\d+字[）\)]?", "", text).strip()
+    result["hook"] = _clean(result["hook"])
+    result["body"] = [_clean(b) for b in result.get("body", [])]
+    result["ending"] = _clean(result.get("ending", ""))
+    return result
+

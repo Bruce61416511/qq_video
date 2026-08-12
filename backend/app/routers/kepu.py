@@ -1,7 +1,7 @@
 """科普创作路由：剧本 / TTS / 分镜提示词 / 视频生成"""
 
 from fastapi import APIRouter, Body, Depends, HTTPException
-from ..services.kepu_service import generate_script, synthesize_tts, generate_scenes
+from ..services.kepu_service import generate_script, synthesize_tts, generate_scenes, generate_full_script, split_full_script
 from ..database import get_db
 from ..models.models import Media, MediaStatus
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +22,34 @@ async def create_script(data: dict = Body(...)):
     except Exception as e:
         raise HTTPException(500, str(e))
 
+
+
+@router.post("/full-script")
+async def create_full_script(data: dict = Body(...)):
+    """话题 → 连续旁白文稿（不分镜）"""
+    topic = data.get("topic", "").strip()
+    total_duration = int(data.get("total_duration", 60))
+    if not topic:
+        raise HTTPException(400, "topic 参数不能为空")
+    try:
+        full_text = await generate_full_script(topic, total_duration)
+        return {"ok": True, "full_text": full_text}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/split-script")
+async def split_script(data: dict = Body(...)):
+    """连续文稿 → LLM自主拆分 {hook, body, ending}"""
+    full_text = data.get("full_text", "").strip()
+    total_duration = int(data.get("total_duration", 60))
+    if not full_text:
+        raise HTTPException(400, "full_text 参数不能为空")
+    try:
+        result = await split_full_script(full_text, total_duration)
+        return {"ok": True, "script": result}
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 @router.post("/tts")
 async def script_tts(data: dict = Body(...)):
@@ -56,7 +84,7 @@ async def get_prompts():
     from pathlib import Path
     prompt_dir = Path(__file__).parent.parent / "prompts"
     result = {}
-    for name in ["kepu_script_prompt.txt", "kepu_scene_prompt.txt"]:
+    for name in ["kepu_script_prompt.txt", "kepu_full_script_prompt.txt", "kepu_split_script_prompt.txt", "kepu_scene_prompt.txt"]:
         p = prompt_dir / name
         if p.exists():
             result[name] = p.read_text(encoding="utf-8-sig").strip()

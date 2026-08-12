@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Card, Input, Button, InputNumber, Space, Tag, Alert, Progress, message, Steps, Typography, Tabs, Modal, Drawer, List } from 'antd'
+import { Card, Input, Button, InputNumber, Space, Tag, Alert, Progress, message, Steps, Typography, Tabs, Modal, Drawer, List , Divider } from 'antd'
 import { EditOutlined, ThunderboltOutlined, DeleteOutlined, AudioOutlined, PictureOutlined, ArrowLeftOutlined, CopyOutlined, VideoCameraOutlined, PlayCircleOutlined, DownloadOutlined, SettingOutlined, FileTextOutlined } from '@ant-design/icons'
 
 const { TextArea } = Input
@@ -19,7 +19,9 @@ export default function KepuTab() {
   const [loading, setLoading] = useState(false)
   const [loadingStep, setLoadingStep] = useState("")
   const [topic, setTopic] = useState("")
-  const [shotCount, setShotCount] = useState(3)
+  const [totalDuration, setTotalDuration] = useState(45)
+  const [fullScript, setFullScript] = useState("")
+  const [splitLoading, setSplitLoading] = useState(false)
   const [narrations, setNarrations] = useState([])
   const [ttsResults, setTtsResults] = useState([])
   const [scenes, setScenes] = useState([])
@@ -46,7 +48,7 @@ export default function KepuTab() {
       const saved = JSON.parse(localStorage.getItem("kepu_state"))
       if (saved) {
         if (saved.topic) setTopic(saved.topic)
-        if (saved.shotCount) setShotCount(saved.shotCount)
+        if (saved.totalDuration) setTotalDuration(saved.totalDuration)
         if (saved.current !== undefined) setCurrent(saved.current)
         if (saved.narrations) setNarrations(saved.narrations)
         if (saved.ttsResults) setTtsResults(saved.ttsResults)
@@ -60,13 +62,13 @@ export default function KepuTab() {
 
   useEffect(() => {
     if (!loaded) return
-    const state = { topic, shotCount, current, narrations, ttsResults, scenes, clips, composeResult }
+    const state = { topic, totalDuration, current, narrations, ttsResults, scenes, clips, composeResult }
     localStorage.setItem("kepu_state", JSON.stringify(state))
-  }, [loaded, topic, shotCount, current, narrations, ttsResults, scenes, clips, composeResult])
+  }, [loaded, topic, totalDuration, current, narrations, ttsResults, scenes, clips, composeResult])
 
   const handleReset = () => {
     setTopic("")
-    setShotCount(3)
+    setTotalDuration(45)
     setNarrations([])
     setTtsResults([])
     setScenes([])
@@ -77,6 +79,54 @@ export default function KepuTab() {
     message.info("已清除全部数据")
   }
 
+  const handleGenerateFullScript = async () => {
+    if (!topic.trim()) { message.warning("请输入话题"); return }
+    setLoading(true)
+    setLoadingStep("正在生成连续剧本...")
+    try {
+      const res = await fetch("http://localhost:8000/api/kepu/full-script", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: topic.trim(), total_duration: totalDuration }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.detail || "生成失败")
+      setFullScript(data.full_text)
+      message.success("连续剧本生成成功，可编辑后拆分")
+    } catch (e) {
+      message.error("生成失败: " + e.message)
+    } finally { setLoading(false) }
+  }
+
+  const handleSplitScript = async () => {
+    if (!fullScript.trim()) { message.warning("请先生成剧本"); return }
+    setSplitLoading(true)
+    setLoadingStep("正在拆分为分镜...")
+    try {
+      const res = await fetch("http://localhost:8000/api/kepu/split-script", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ full_text: fullScript.trim(), total_duration: totalDuration }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.detail || "拆分失败")
+      const nars = [
+        { voice_script: data.script.hook, stage: "hook", index: 0 },
+        ...data.script.body.map((text, i) => ({ voice_script: text, stage: "body", index: i + 1 })),
+        { voice_script: data.script.ending, stage: "ending", index: data.script.body.length + 1 },
+      ]
+      setNarrations(nars)
+      setTtsResults([])
+      setScenes([])
+      setClips([])
+      setComposeResult(null)
+      // 根据实际镜头数更新总时长
+      setTotalDuration(nars.length * 15)
+      setCurrent(1)
+      message.success(`分镜拆分完成，共 ${nars.length} 个镜头`)
+    } catch (e) {
+      message.error("拆分失败: " + e.message)
+    } finally { setSplitLoading(false) }
+  }
+
   const handleGenerateScript = async () => {
     if (!topic.trim()) { message.warning("请输入话题"); return }
     setLoading(true)
@@ -84,7 +134,7 @@ export default function KepuTab() {
     try {
       const res = await fetch("http://localhost:8000/api/kepu/script", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: topic.trim(), shot_count: shotCount }),
+        body: JSON.stringify({ topic: topic.trim(), shot_count: Math.ceil(totalDuration / 15) }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || "失败")
@@ -116,7 +166,7 @@ export default function KepuTab() {
       if (n.stage === "body") n.index = updated.filter((x, k) => x.stage === "body" && k <= i).length
     })
     setNarrations(updated)
-    setShotCount(updated.filter(n => n.stage === "body").length + 2)
+    setTotalDuration((updated.filter(n => n.stage === "body").length + 2) * 15)
     message.success("已添加正文分镜")
   }
 
@@ -133,7 +183,7 @@ export default function KepuTab() {
       if (n.stage === "body") n.index = u.filter((x, k) => x.stage === "body" && k <= idx).length
     })
     setNarrations(u)
-    setShotCount(u.filter(n => n.stage === "body").length + 2)
+    setTotalDuration((u.filter(n => n.stage === "body").length + 2) * 15)
   }
 
   const handleConcat = () => {
@@ -255,7 +305,8 @@ export default function KepuTab() {
     try {
       const res = await fetch("http://localhost:8000/api/kepu/prompts")
       const data = await res.json()
-      const key = file.key === "script" ? "kepu_script_prompt.txt" : "kepu_scene_prompt.txt"
+      const keyMap = { script: "kepu_script_prompt.txt", full_script: "kepu_full_script_prompt.txt", split_script: "kepu_split_script_prompt.txt", scene: "kepu_scene_prompt.txt" }
+      const key = keyMap[file.key] || file.filename
       setEditingContent(data.prompts?.[key] || "")
     } catch (e) { setEditingContent("") }
     setConfigDrawerOpen(true)
@@ -264,7 +315,8 @@ export default function KepuTab() {
     if (!editingFile) return
     setSavingConfig(true)
     try {
-      const key = editingFile.key === "script" ? "kepu_script_prompt.txt" : "kepu_scene_prompt.txt"
+      const keyMap2 = { script: "kepu_script_prompt.txt", full_script: "kepu_full_script_prompt.txt", split_script: "kepu_split_script_prompt.txt", scene: "kepu_scene_prompt.txt" }
+      const key = keyMap2[editingFile.key] || editingFile.filename
       await fetch("http://localhost:8000/api/kepu/prompts", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompts: { [key]: editingContent } }),
@@ -276,8 +328,10 @@ export default function KepuTab() {
   }
 
   const configFiles = [
-    { key: "script", filename: "kepu_script_prompt.txt", description: "剧本提示词" },
-    { key: "scene", filename: "kepu_scene_prompt.txt", description: "分镜提示词" },
+    { key: "script", filename: "kepu_script_prompt.txt", description: "剧本提示词（旧版）" },
+    { key: "full_script", filename: "kepu_full_script_prompt.txt", description: "连续剧本提示词" },
+    { key: "split_script", filename: "kepu_split_script_prompt.txt", description: "分镜拆分提示词" },
+    { key: "scene", filename: "kepu_scene_prompt.txt", description: "分镜画面提示词" },
   ]
 
   const tabItems = [
@@ -301,16 +355,55 @@ export default function KepuTab() {
                   <TextArea value={topic} onChange={e => setTopic(e.target.value)} placeholder="例如：酱油为什么这么鲜" rows={3} style={{ marginTop: 8 }} />
                 </div>
                 <div>
-                  <Text strong>总镜头数</Text>
-                  <InputNumber min={3} max={8} value={shotCount} onChange={v => setShotCount(v || 3)} style={{ marginLeft: 12, width: 100 }} />
+                  <Text strong>总时长</Text>
+                  <InputNumber min={15} max={300} step={5} value={totalDuration} onChange={v => setTotalDuration(v || 45)} style={{ marginLeft: 12, width: 100 }} addonAfter="秒" />
+                  <Text type="secondary" style={{ marginLeft: 12 }}>≈ {Math.ceil(totalDuration / 15)} 个镜头（每镜15秒）</Text>
                 </div>
-                <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleGenerateScript} loading={loading} block>生成剧本</Button>
+
+                <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleGenerateFullScript} loading={loading && !splitLoading} block>
+                  步骤1：生成连续剧本
+                </Button>
+
+                {fullScript && (
+                  <>
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <Text strong>连续剧本（可编辑）</Text>
+                        <Text type="secondary">{fullScript.replace(/\s/g, "").length} 字</Text>
+                      </div>
+                      <TextArea
+                        value={fullScript}
+                        onChange={e => setFullScript(e.target.value)}
+                        rows={12}
+                        style={{ fontFamily: "inherit" }}
+                      />
+                    </div>
+                    <Button
+                      type="primary"
+                      icon={<ThunderboltOutlined />}
+                      onClick={handleSplitScript}
+                      loading={splitLoading}
+                      block
+                      style={{ background: "#52c41a", borderColor: "#52c41a" }}
+                    >
+                      步骤2：拆分为 {Math.ceil(totalDuration / 15)} 个分镜
+                    </Button>
+                  </>
+                )}
+
+                <Divider style={{ margin: "4px 0" }} />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  💡 新流程：先生成完整剧本，再自动拆分为分镜。如需旧版一步到位，点下方按钮。
+                </Text>
+                <Button type="link" size="small" onClick={handleGenerateScript} loading={loading && splitLoading}>
+                  使用旧版：一步生成剧本+分镜
+                </Button>
               </Space>
             </Card>
           )}
           {current === 1 && (
             <Card title="旁白分镜"
-              extra={<Space><Text type="secondary" style={{ fontSize: 12 }}>预估总时长：{Math.round(narrations.reduce((sum, n) => sum + (n.voice_script || "").length, 0) / 4.0)}s / {shotCount * 15}s</Text><Button size="small" onClick={() => setCurrent(0)} icon={<ArrowLeftOutlined />}>返回</Button></Space>}
+              extra={<Space><Text type="secondary" style={{ fontSize: 12 }}>预估总时长：{Math.round(narrations.reduce((sum, n) => sum + (n.voice_script || "").length, 0) / 4.0)}s / {totalDuration}s</Text><Button size="small" onClick={() => setCurrent(0)} icon={<ArrowLeftOutlined />}>返回</Button></Space>}
               style={{ maxWidth: 700 }}>
               {narrations.map((nar, i) => {
                 const charCount = (nar.voice_script || "").length
