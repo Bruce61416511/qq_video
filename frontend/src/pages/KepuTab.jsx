@@ -476,11 +476,11 @@ export default function KepuTab() {
                   {composeResult.duration && <Text type="secondary">总时长: {composeResult.duration}秒</Text>}
                   <div style={{ marginTop: 24 }}>
                     <video controls style={{ width: "100%", maxHeight: 480, borderRadius: 8, background: "#000" }}
-                      src={"http://localhost:8000/uploads/" + (composeResult.path || "").split("/").pop()} />
+                      src={"http://localhost:8000/uploads/" + (composeResult.path || "").split("/").pop().split("\\").pop()} />
                   </div>
                   <Space style={{ marginTop: 16 }}>
                     <Button type="primary" icon={<DownloadOutlined />}
-                      onClick={() => { window.open("http://localhost:8000/uploads/" + (composeResult.path || "").split("/").pop(), "_blank") }}>下载视频</Button>
+                      onClick={() => { window.open("http://localhost:8000/uploads/" + (composeResult.path || "").split("/").pop().split("\\").pop(), "_blank") }}>下载视频</Button>
                     <Button onClick={handleReset}>新建科普视频</Button>
                   </Space>
                 </div>

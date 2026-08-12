@@ -162,6 +162,8 @@ async def _merge_single(clip: dict, output_path: str, size: str, resolution: str
 
 
 def _probe_duration(video_path: str) -> float:
+    if not video_path or video_path.startswith(("http://", "https://")):
+        return 0.0  # skip probing URLs
     """Get actual video duration via ffprobe. Returns 0 on failure."""
     try:
         import json as _json
@@ -177,16 +179,20 @@ def _probe_duration(video_path: str) -> float:
     return 0.0
 
 async def _concat_clips(clips: list[dict], output_path: str, size: str, resolution: str) -> dict:
-    valid_clips = [c for c in clips if c.get("video_path") and os.path.exists(c.get("video_path", ""))]
+    valid_clips = [c for c in clips if c.get("video_path") and (c["video_path"].startswith(("http://", "https://")) or os.path.exists(c["video_path"]))]
     if not valid_clips:
         return {"ok": False, "error": "没有有效视频片段"}
     try:
         # Pre-probe all durations once (video + audio per clip)
         probed_durations = []
         for i, c in enumerate(valid_clips):
-            vdur = _probe_duration(c.get("video_path", ""))
-            if vdur <= 0:
-                vdur = float(c.get("duration", 5))
+            vpath = c.get("video_path", "")
+            if vpath.startswith(("http://", "https://")):
+                vdur = float(c.get("duration", 5))  # skip probing URLs
+            else:
+                vdur = _probe_duration(vpath)
+                if vdur <= 0:
+                    vdur = float(c.get("duration", 5))
             adur = _probe_duration(c.get("audio_path", ""))
             probed_durations.append((vdur, adur))
             # Warn if audio significantly exceeds video (will be truncated)
