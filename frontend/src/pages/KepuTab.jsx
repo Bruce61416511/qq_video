@@ -290,7 +290,7 @@ export default function KepuTab() {
     try {
       const res = await fetch("http://localhost:8000/api/kepu/prompts")
       const data = await res.json()
-      const keyMap = { script: "kepu_script_prompt.txt", full_script: "kepu_full_script_prompt.txt", split_script: "kepu_split_script_prompt.txt", scene: "kepu_scene_prompt.txt" }
+      const keyMap = { full_script: "kepu_full_script_prompt.txt", split_script: "kepu_split_script_prompt.txt", scene: "kepu_scene_prompt.txt" }
       const key = keyMap[file.key] || file.filename
       setEditingContent(data.prompts?.[key] || "")
     } catch (e) { setEditingContent("") }
@@ -300,7 +300,7 @@ export default function KepuTab() {
     if (!editingFile) return
     setSavingConfig(true)
     try {
-      const keyMap2 = { script: "kepu_script_prompt.txt", full_script: "kepu_full_script_prompt.txt", split_script: "kepu_split_script_prompt.txt", scene: "kepu_scene_prompt.txt" }
+      const keyMap2 = { full_script: "kepu_full_script_prompt.txt", split_script: "kepu_split_script_prompt.txt", scene: "kepu_scene_prompt.txt" }
       const key = keyMap2[editingFile.key] || editingFile.filename
       await fetch("http://localhost:8000/api/kepu/prompts", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -313,7 +313,6 @@ export default function KepuTab() {
   }
 
   const configFiles = [
-    { key: "script", filename: "kepu_script_prompt.txt", description: "剧本提示词（旧版）" },
     { key: "full_script", filename: "kepu_full_script_prompt.txt", description: "连续剧本提示词" },
     { key: "split_script", filename: "kepu_split_script_prompt.txt", description: "分镜拆分提示词" },
     { key: "scene", filename: "kepu_scene_prompt.txt", description: "分镜画面提示词" },

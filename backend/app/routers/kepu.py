@@ -1,7 +1,7 @@
 """科普创作路由：剧本 / TTS / 分镜提示词 / 视频生成"""
 
 from fastapi import APIRouter, Body, Depends, HTTPException
-from ..services.kepu_service import generate_script, synthesize_tts, generate_scenes, generate_full_script, split_full_script
+from ..services.kepu_service import synthesize_tts, generate_scenes, generate_full_script, split_full_script
 from ..database import get_db
 from ..models.models import Media, MediaStatus
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,7 +84,7 @@ async def get_prompts():
     from pathlib import Path
     prompt_dir = Path(__file__).parent.parent / "prompts"
     result = {}
-    for name in ["kepu_script_prompt.txt", "kepu_full_script_prompt.txt", "kepu_split_script_prompt.txt", "kepu_scene_prompt.txt"]:
+    for name in ["kepu_full_script_prompt.txt", "kepu_split_script_prompt.txt", "kepu_scene_prompt.txt"]:
         p = prompt_dir / name
         if p.exists():
             result[name] = p.read_text(encoding="utf-8-sig").strip()
