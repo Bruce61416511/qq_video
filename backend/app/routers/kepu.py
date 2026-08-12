@@ -122,3 +122,84 @@ async def kepu_generate_video(data: dict = Body(...)):
         return {"ok": True, "clips": clips}
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+
+@router.post("/clip/generate")
+async def kepu_generate_single_clip(data: dict = Body(...)):
+    """单个分镜 → AI 视频片段"""
+    scene_prompt = data.get("scene_prompt", "").strip()
+    duration = float(data.get("duration", 5))
+    size = data.get("size", "9:16")
+    resolution = data.get("resolution", "1080P")
+    index = int(data.get("index", 0))
+
+    if not scene_prompt:
+        raise HTTPException(400, "scene_prompt 参数不能为空")
+
+    try:
+        from ..services.video_gen_service import generate_video_clip
+        prompt = scene_prompt.replace("\n", "，").strip()
+        dur_str = str(max(5, min(15, int(duration))))
+        result = await generate_video_clip(prompt, duration=dur_str, size=size, resolution=resolution)
+        if isinstance(result, dict):
+            return {"ok": True, "clip": {
+                "index": index,
+                "video_path": result.get("url", ""),
+                "prompt": prompt,
+                "status": result.get("status", "error"),
+                "message": result.get("message", ""),
+            }}
+        else:
+            return {"ok": True, "clip": {"index": index, "video_path": str(result), "prompt": prompt, "status": "done"}}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+@router.post("/compose")
+async def kepu_compose(data: dict = Body(...)):
+    """视频片段 + 音频 + 字幕 → ffmpeg 合成最终视频"""
+    clips = data.get("clips", [])
+    size = data.get("size", "9:16")
+    resolution = data.get("resolution", "1080P")
+
+    if not clips:
+        raise HTTPException(400, "clips 参数不能为空")
+
+    try:
+        import uuid
+        from ..services.video_composer import compose_video
+        from ..config import UPLOAD_DIR
+
+        # Resolve full paths for audio
+        resolved_clips = []
+        for c in clips:
+            rc = {**c}
+            audio_rel = c.get("audio_path", "")
+            if audio_rel:
+                from pathlib import Path
+                full_audio = UPLOAD_DIR.parent / audio_rel.lstrip("/")
+                if full_audio.exists():
+                    rc["audio_path"] = str(full_audio)
+            video_url = c.get("video_path", "")
+            if video_url and not video_url.startswith(("http://", "https://")) and not Path(video_url).exists():
+                rc["video_path"] = ""  # skip invalid local paths
+            resolved_clips.append(rc)
+
+        output_path = str(UPLOAD_DIR / f"kepu_composed_{uuid.uuid4().hex}.mp4")
+        result = await compose_video(resolved_clips, output_path, size=size, resolution=resolution)
+        return result
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/script/verify")
+async def kepu_verify_script(data: dict = Body(...)):
+    """核查脚本真实性：逐句标注 [可验证/推测/不准确]"""
+    script = data.get("script", {})
+    if not script or "hook" not in script:
+        raise HTTPException(400, "script 参数不能为空，需包含 hook/body/ending")
+    try:
+        from ..services.kepu_service import verify_script
+        result = await verify_script(script)
+        return {"ok": True, "verification": result}
+    except Exception as e:
+        raise HTTPException(500, str(e))

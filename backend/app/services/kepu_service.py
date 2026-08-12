@@ -260,3 +260,47 @@ async def run_kepu_pipeline(
         "compose": comp_result,
         "video_path": comp_result.get("path", ""),
     }
+
+
+# ══════════════════════════════════
+# 事实核查：标注脚本中可验证/推测/不准确的内容
+# ══════════════════════════════════
+
+async def verify_script(script: dict) -> dict:
+    """对生成的剧本逐句标注准确性，返回 {hook, body[], ending} 每段附标注"""
+    verify_prompt = '''你是科普内容事实核查员。对以下短视频脚本，逐句标注准确性。
+
+标注标签（三选一）：
+- [可验证]：该陈述有公认的科学依据，可在教科书中找到
+- [推测]：可能是对的，但表述过于精确或存在学术争议
+- [不准确]：该陈述明显有误或不符合主流科学共识
+
+输出纯 JSON：
+{
+  "hook": {"text": "...", "label": "可验证", "note": "简短说明"},
+  "body": [
+    {"text": "...", "label": "推测", "note": "简短说明"},
+    ...
+  ],
+  "ending": {"text": "...", "label": "可验证", "note": "简短说明"}
+}
+
+判断标准：
+- 涉及微生物代谢顺序、精确数字（如180天、300种风味）→ 如无法确认，标[推测]
+- 涉及年份/史实（如三千年前周朝）→ 如无法确认，标[推测]
+- 基本科学常识（如蛋白质分解为氨基酸）→ [可验证]
+- 明确错误的因果关系 → [不准确]
+'''
+
+    import json as _json
+    # Build script text
+    script_text = f"hook: {script['hook']}\n\n"
+    for i, b in enumerate(script['body']):
+        script_text += f"body{i+1}: {b}\n"
+    script_text += f"\nending: {script['ending']}"
+
+    raw = await _call_llm(verify_prompt, script_text, temperature=0.1, max_tokens=2000)
+    result = _extract_json(raw)
+    if not result:
+        raise RuntimeError(f"事实核查 LLM 未返回有效 JSON: {raw[:200]}")
+    return result

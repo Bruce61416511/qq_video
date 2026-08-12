@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Card, Input, Button, InputNumber, Space, Tag, Alert, Progress, message, Steps, Typography, Tabs, Modal } from 'antd'
-import { EditOutlined, ThunderboltOutlined, DeleteOutlined, AudioOutlined, PictureOutlined, ArrowLeftOutlined, CopyOutlined } from '@ant-design/icons'
+import { Card, Input, Button, InputNumber, Space, Tag, Alert, Progress, message, Steps, Typography, Tabs, Modal, Image } from 'antd'
+import { EditOutlined, ThunderboltOutlined, DeleteOutlined, AudioOutlined, PictureOutlined, ArrowLeftOutlined, CopyOutlined, VideoCameraOutlined, PlayCircleOutlined, DownloadOutlined } from '@ant-design/icons'
 
 const { TextArea } = Input
 const { Text, Title } = Typography
@@ -9,7 +9,9 @@ const stepItems = [
   { title: '话题输入' },
   { title: '旁白分镜' },
   { title: '配音合成' },
-  { title: '生成视频' },
+  { title: '分镜提示词' },
+  { title: '生成视频片段' },
+  { title: '合成导出' },
 ]
 
 export default function KepuTab() {
@@ -32,6 +34,13 @@ export default function KepuTab() {
 
   const [loaded, setLoaded] = useState(false)
 
+  // New state for video generation & compose
+  const [clips, setClips] = useState([])
+  const [composeResult, setComposeResult] = useState(null)
+  const [composeLoading, setComposeLoading] = useState(false)
+  const [clipEditIdx, setClipEditIdx] = useState(-1)
+  const [clipEditText, setClipEditText] = useState('')
+
   // Load/Save state from localStorage
   useEffect(() => {
     try {
@@ -43,6 +52,8 @@ export default function KepuTab() {
         if (saved.narrations) setNarrations(saved.narrations)
         if (saved.ttsResults) setTtsResults(saved.ttsResults)
         if (saved.scenes) setScenes(saved.scenes)
+        if (saved.clips) setClips(saved.clips)
+        if (saved.composeResult) setComposeResult(saved.composeResult)
       }
     } catch (e) {}
     setLoaded(true)
@@ -50,9 +61,9 @@ export default function KepuTab() {
 
   useEffect(() => {
     if (!loaded) return
-    const state = { topic, shotCount, current, narrations, ttsResults, scenes }
+    const state = { topic, shotCount, current, narrations, ttsResults, scenes, clips, composeResult }
     localStorage.setItem('kepu_state', JSON.stringify(state))
-  }, [loaded, topic, shotCount, current, narrations, ttsResults, scenes])
+  }, [loaded, topic, shotCount, current, narrations, ttsResults, scenes, clips, composeResult])
 
   const handleReset = () => {
     setTopic('')
@@ -60,6 +71,8 @@ export default function KepuTab() {
     setNarrations([])
     setTtsResults([])
     setScenes([])
+    setClips([])
+    setComposeResult(null)
     setCurrent(0)
     localStorage.removeItem('kepu_state')
     message.info('已清除全部数据')
@@ -84,6 +97,8 @@ export default function KepuTab() {
       setNarrations(nars)
       setTtsResults([])
       setScenes([])
+      setClips([])
+      setComposeResult(null)
       setCurrent(1)
       message.success('剧本生成成功')
     } catch (e) {
@@ -119,146 +134,170 @@ export default function KepuTab() {
         body: JSON.stringify({ narrations: valid }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || 'TTS failed')
-      setTtsResults(data.segments || []); setCurrent(2)
-      message.success('TTS完成: ' + data.total_duration + 's')
-    } catch (e) { message.error('TTS失败: ' + e.message) }
-    finally { setLoading(false) }
+      if (!res.ok) throw new Error(data.detail || '失败')
+      setTtsResults(data.segments)
+      setCurrent(2)
+      message.success('TTS合成成功')
+    } catch (e) {
+      message.error('失败: ' + e.message)
+    } finally { setLoading(false) }
   }
 
   const handleGenerateScenes = async () => {
-    if (!ttsResults.length) { message.warning('请先生成TTS'); return }
+    const valid = narrations.filter(n => n.voice_script.trim())
+    if (!valid.length) { message.warning('无旁白'); return }
+    const durations = ttsResults.map(r => r.duration)
+    if (!durations.length) { message.warning('请先生成TTS'); return }
     setLoading(true); setLoadingStep('正在生成分镜提示词...')
     try {
       const res = await fetch('http://localhost:8000/api/kepu/scenes', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          narrations: narrations.filter(n => n.voice_script.trim()),
-          durations: ttsResults.map(r => r.duration),
-        }),
+        body: JSON.stringify({ narrations: valid, durations }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || '失败')
-      setScenes(data.scenes || []); setCurrent(3)
-      message.success('分镜提示词生成完成')
-    } catch (e) { message.error('失败: ' + e.message) }
-    finally { setLoading(false) }
+      setScenes(data.scenes)
+      setCurrent(3)
+      message.success('分镜提示词生成成功')
+    } catch (e) {
+      message.error('失败: ' + e.message)
+    } finally { setLoading(false) }
   }
 
-  if (loading && loadingStep) {
-    return <div style={{ textAlign: 'center', padding: 80 }}>
-      <Title level={4}>{loadingStep}</Title>
-      <Progress percent={99} status="active" style={{ maxWidth: 400 }} />
-    </div>
-  }
-
-  const tagColors = { hook: 'red', body: 'blue', ending: 'green' }
-  const tagLabels = { hook: '钩子', body: '正文', ending: '结尾' }
-
-  const loadPrompts = async () => {
-    setPromptLoading(true)
+  // Step 4: Generate video clips
+  const handleGenerateVideo = async () => {
+    const validScenes = scenes.filter(s => s.scene_prompt?.trim())
+    if (!validScenes.length) { message.warning('无分镜提示词'); return }
+    const durations = ttsResults.map(r => r.duration)
+    setLoading(true); setLoadingStep('正在生成视频片段 (1/' + validScenes.length + ')...')
     try {
-      const res = await fetch('http://localhost:8000/api/kepu/prompts')
-      const data = await res.json()
-      setScriptPrompt(data.prompts['kepu_script_prompt.txt'] || '')
-      setScenePrompt(data.prompts['kepu_scene_prompt.txt'] || '')
-    } catch (e) { message.error('加载提示词失败') }
-    finally { setPromptLoading(false) }
-  }
-
-  const savePrompts = async () => {
-    setPromptLoading(true)
-    try {
-      const res = await fetch('http://localhost:8000/api/kepu/prompts', {
+      const res = await fetch('http://localhost:8000/api/kepu/generate-video', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompts: { 'kepu_script_prompt.txt': scriptPrompt, 'kepu_scene_prompt.txt': scenePrompt } }),
+        body: JSON.stringify({ scenes: validScenes, durations, size: '9:16', resolution: '1080P' }),
       })
-      if (!res.ok) throw new Error('保存失败')
-      message.success('提示词已保存')
-    } catch (e) { message.error('保存失败: ' + e.message) }
-    finally { setPromptLoading(false) }
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || '失败')
+      setClips(data.clips || [])
+      setCurrent(4)
+      message.success('视频片段生成完成')
+    } catch (e) {
+      message.error('失败: ' + e.message)
+    } finally { setLoading(false) }
   }
 
-  const tabItems = [
-    { key: 'studio', label: '智能分镜' },
-    { key: 'config', label: '生成配置' },
-  ]
+  // Step 4: Generate single clip
+  const handleGenerateSingleClip = async (sceneIdx) => {
+    const scene = scenes[sceneIdx]
+    if (!scene?.scene_prompt?.trim()) { message.warning('无分镜提示词'); return }
+    const tts = ttsResults[sceneIdx]
+    const duration = tts?.duration || 5
+    // Set loading state for this clip
+    const updatedClips = [...clips]
+    updatedClips[sceneIdx] = { ...updatedClips[sceneIdx], status: 'generating', video_path: '', error: '' }
+    setClips(updatedClips)
+    try {
+      const res = await fetch('http://localhost:8000/api/kepu/clip/generate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scene_prompt: scene.scene_prompt, duration, size: '9:16', resolution: '1080P', index: sceneIdx }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.detail || '生成失败')
+      const clip = data.clip
+      const newClips = [...clips]
+      newClips[sceneIdx] = {
+        video_path: clip.video_path || '',
+        prompt: clip.prompt || '',
+        status: clip.status === 'done' ? 'done' : 'error',
+        error: clip.status !== 'done' ? (clip.message || '生成失败') : '',
+      }
+      setClips(newClips)
+      message.success(`分镜 ${sceneIdx + 1} 生成完成`)
+    } catch (e) {
+      const newClips = [...clips]
+      newClips[sceneIdx] = { ...newClips[sceneIdx], status: 'error', error: e.message }
+      setClips(newClips)
+      message.error('生成失败: ' + e.message)
+    }
+  }
+
+  // Step 5: Compose final video
+  const handleCompose = async () => {
+    if (!clips.length) { message.warning('无视频片段'); return }
+    const composedClips = clips.map((clip, i) => {
+      const tts = ttsResults[i] || {}
+      const nar = narrations[i] || {}
+      return {
+        video_path: clip.video_path || '',
+        audio_path: tts.audio_path || '',
+        subtitle: nar.voice_script || '',
+        duration: tts.duration || 5,
+      }
+    })
+    setComposeLoading(true)
+    try {
+      const res = await fetch('http://localhost:8000/api/kepu/compose', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clips: composedClips, size: '9:16', resolution: '1080P' }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.error || data.detail || '合成失败')
+      setComposeResult(data)
+      setCurrent(5)
+      message.success('视频合成完成')
+    } catch (e) {
+      message.error('合成失败: ' + e.message)
+    } finally { setComposeLoading(false) }
+  }
 
   return (
-    <div style={{ padding: 24 }}>
-      <Tabs activeKey={tabMode} onChange={(key) => { setTabMode(key); if (key === 'config') loadPrompts() }} items={tabItems} style={{ maxWidth: 700 }} />
+    <div style={{ maxWidth: 900, margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <Title level={3} style={{ margin: 0 }}>科普创作</Title>
+        <Space>
+          <Button size="small" danger onClick={handleReset}>清除全部</Button>
+        </Space>
+      </div>
 
-      {tabMode === 'config' && (
-        <Card title="提示词配置" style={{ maxWidth: 700 }}>
-          <Alert type="info" message="编辑提示词以自定义大模型行为。修改后下次生成生效。" style={{ marginBottom: 16 }} />
-          <div style={{ marginBottom: 16 }}>
-            <Text strong>剧本提示词 (kepu_script_prompt.txt)</Text>
-            <TextArea rows={12} value={scriptPrompt} onChange={e => setScriptPrompt(e.target.value)}
-              style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 12 }} />
-          </div>
-          <div style={{ marginBottom: 16 }}>
-            <Text strong>分镜提示词 (kepu_scene_prompt.txt)</Text>
-            <TextArea rows={12} value={scenePrompt} onChange={e => setScenePrompt(e.target.value)}
-              style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 12 }} />
-          </div>
-          <Space>
-            <Button onClick={loadPrompts} loading={promptLoading}>从服务器加载</Button>
-            <Button type="primary" onClick={savePrompts} loading={promptLoading}>保存到服务器</Button>
+      <Steps current={current} items={stepItems} size="small" style={{ marginBottom: 24 }} onChange={(step) => setCurrent(step)} />
+
+      {/* Step 0: 话题输入 */}
+      {current === 0 && (
+        <Card title="话题输入" style={{ maxWidth: 700 }}>
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <div>
+              <Text strong>输入话题</Text>
+              <TextArea value={topic} onChange={e => setTopic(e.target.value)} placeholder="例如：酱油为什么这么鲜" rows={3} style={{ marginTop: 8 }} />
+            </div>
+            <div>
+              <Text strong>正文分镜数</Text>
+              <InputNumber min={3} max={8} value={shotCount} onChange={v => setShotCount(v || 3)} style={{ marginLeft: 12, width: 100 }} />
+            </div>
+            <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleGenerateScript} loading={loading} block>
+              生成剧本
+            </Button>
           </Space>
         </Card>
       )}
 
-      {tabMode === 'studio' && (<>
-      <Steps current={current} onChange={(step) => {
-  const canAccess = [true, narrations.length > 0, ttsResults.length > 0, scenes.length > 0]
-  if (canAccess[step] || step < current) setCurrent(step)
-}} items={stepItems.map((item, i) => {
-  const canAccess = [true, narrations.length > 0, ttsResults.length > 0, scenes.length > 0]
-  return { ...item, disabled: !canAccess[i] && i > current }
-})} style={{ maxWidth: 700, marginBottom: 32 }} />
-
-      <div style={{ maxWidth: 700, marginBottom: 16, textAlign: 'right' }}>
-        <Button size='small' danger onClick={handleReset}>复位</Button>
-      </div>
-
-      {current === 0 && (
-        <Card title="话题输入" style={{ maxWidth: 700 }}>
-          <div style={{ marginBottom: 16 }}>
-            <Text strong>视频话题</Text>
-            <TextArea value={topic} onChange={e => setTopic(e.target.value)}
-              placeholder="例如：千年酱香：酱油的前世今生" rows={3} style={{ marginTop: 8 }} />
-          </div>
-          <div style={{ marginBottom: 16 }}>
-            <Text strong>正文分镜数</Text>
-            <div style={{ marginTop: 8 }}>
-              <InputNumber min={1} max={10} value={shotCount} onChange={v => setShotCount(v)} />
-              <Text type="secondary" style={{ marginLeft: 8 }}>{shotCount + 2} 个分镜 (钩子 + {shotCount}正文 + 结尾)</Text>
-            </div>
-          </div>
-          <Button type="primary" block icon={<ThunderboltOutlined />} loading={loading} onClick={handleGenerateScript}>
-            Generate Script
-          </Button>
-        </Card>
-      )}
-
+      {/* Step 1: 旁白分镜 */}
       {current === 1 && (
-        <>
-        <Card title={'旁白分镜 (' + narrations.length + ' 镜, 总时长约' + (narrations.reduce((s, n) => s + n.voice_script.length, 0) / 4.8).toFixed(0) + '秒)'}
+        <Card title="旁白分镜"
           extra={<Button size="small" onClick={() => setCurrent(0)} icon={<ArrowLeftOutlined />}>返回</Button>}
           style={{ maxWidth: 700 }}>
-          {narrations.map((nar, i) => (
-            <div key={i} style={{ marginBottom: 12, padding: 12, borderRadius: 8, border: '1px solid #e8e8e8', background: editingIndex === i ? '#fffbe6' : '#fafafa' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <Space>
-                  <Tag color={tagColors[nar.stage] || nar.stage}>{tagLabels[nar.stage]}</Tag>
-                  <Text type="secondary" style={{ fontSize: 12 }}>第 {i + 1} 分镜</Text>
-                  <Text type="secondary" style={{ fontSize: 12 }}>{nar.voice_script.length}字 / {(nar.voice_script.length / 4.8).toFixed(1)}秒</Text>
-                </Space>
-                <Space size="small">
-                  <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(i)}>编辑</Button>
-                  {nar.stage === 'body' && <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(i)} />}
-                </Space>
-              </div>
+          {narrations.map((nar, i) => {
+            const charCount = (nar.voice_script || '').length
+            const estDuration = Math.round(charCount / 4.0 * 10) / 10
+            return (
+            <div key={i} style={{ marginBottom: 12, padding: 12, borderRadius: 8, border: '1px solid #e8e8e8', background: '#fafafa' }}>
+              <Space style={{ marginBottom: 4 }}>
+                <Tag color={nar.stage === 'hook' ? 'red' : nar.stage === 'ending' ? 'green' : 'blue'}>
+                  {nar.stage === 'hook' ? '钩子' : nar.stage === 'ending' ? '结尾' : `正文${nar.index}`}
+                </Tag>
+                <Tag color={(nar.stage === "hook" ? charCount > 70 : charCount > 60) ? "red" : estDuration > 15 ? "orange" : "default"}>{(nar.stage === "hook" ? charCount > 70 : charCount > 60) ? charCount + "字 ≈ " + estDuration + "s ⚠超限" : estDuration > 15 ? charCount + "字 ≈ " + estDuration + "s ⚠" : charCount + "字 ≈ " + estDuration + "s"}</Tag>
+                {editingIndex !== i && (
+                  <Button size="small" type="text" icon={<EditOutlined />} onClick={() => handleEdit(i)} />
+                )}
+              </Space>
               {editingIndex === i ? (
                 <div>
                   <TextArea value={editText} onChange={e => setEditText(e.target.value)} rows={3} style={{ marginBottom: 8 }} />
@@ -269,23 +308,24 @@ export default function KepuTab() {
                 <div style={{ color: '#333', fontSize: 13, lineHeight: 1.8 }}>{nar.voice_script}</div>
               )}
             </div>
-          ))}
+          )})}
+          {(() => { const overLimit = narrations.filter(n => n.voice_script && n.voice_script.length > 60); return overLimit.length > 0 ? (
+            <Alert type="error" style={{ marginTop: 8 }} message={
+              `有 ${overLimit.length} 个分镜超过60字限制：` +
+              overLimit.map(n => `${n.stage === "hook" ? "钩子" : n.stage === "ending" ? "结尾" : "正文" + n.index}(${n.voice_script.length}字)`)
+                .join("、") +
+              "。请删减至60字以内再生成TTS。"
+            } />
+          ) : null })()}
+          {(() => { const limits = { hook: 70, body: 60, ending: 60 }; const overLimit = narrations.filter(n => n.voice_script && n.voice_script.length > (limits[n.stage] || 60)); return overLimit.length > 0 ? (<Alert type="error" style={{ marginTop: 8 }} message={"有 " + overLimit.length + " 个分镜超限：" + overLimit.map(n => (n.stage==="hook"?"钩子":n.stage==="ending"?"结尾":"正文"+n.index)+"("+n.voice_script.length+"字)").join("、") + "。请删减后再生成TTS。"} />) : null })()}
           <Space style={{ marginTop: 8 }}>
             <Button icon={<CopyOutlined />} onClick={handleConcat}>串联旁白</Button>
-            <Button type="primary" icon={<AudioOutlined />} onClick={handleTts} loading={loading}>生成TTS</Button>
+            <Button type="primary" icon={<AudioOutlined />} onClick={handleTts} loading={loading} disabled={(() => { const limits = { hook: 70, body: 60, ending: 60 }; return narrations.some(n => n.voice_script && n.voice_script.length > (limits[n.stage] || 60)); })()}>生成TTS</Button>
           </Space>
         </Card>
-        <Modal title="串联旁白" open={concatVisible} onCancel={() => setConcatVisible(false)} footer={[
-          <Button key="copy" type="primary" onClick={() => { navigator.clipboard.writeText(concatText); message.success('已复制') }}>复制全文</Button>,
-          <Button key="close" onClick={() => setConcatVisible(false)}>关闭</Button>
-        ]} width={600}>
-          <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 2, maxHeight: 400, overflow: 'auto', background: '#fafafa', padding: 16, borderRadius: 8 }}>
-            {concatText}
-          </div>
-        </Modal>
-        </>
       )}
 
+      {/* Step 2: 配音合成 */}
       {current === 2 && (
         <Card title="配音合成"
           extra={<Button size="small" onClick={() => setCurrent(1)} icon={<ArrowLeftOutlined />}>返回</Button>}
@@ -294,7 +334,7 @@ export default function KepuTab() {
             const tts = ttsResults[i]
             return (
               <div key={i} style={{ marginBottom: 12, padding: 12, borderRadius: 8, border: '1px solid #e8e8e8', background: '#fafafa' }}>
-                <Space><Tag color="blue">第 {i + 1} 分镜</Tag>{tts && <Tag color="green">{tts.duration}s</Tag>}</Space>
+                <Space><Tag color="blue">第{i + 1} 分镜</Tag>{tts && <Tag color="green">{tts.duration}s</Tag>}</Space>
                 <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>{nar.voice_script.substring(0, 60)}...</div>
                 {tts?.audio_path && <audio controls style={{ width: '100%', marginTop: 8, height: 32 }} src={'http://localhost:8000' + tts.audio_path} />}
               </div>
@@ -306,6 +346,7 @@ export default function KepuTab() {
         </Card>
       )}
 
+      {/* Step 3: 分镜提示词 */}
       {current === 3 && (
         <Card title="分镜提示词"
           extra={<Button size="small" onClick={() => setCurrent(2)} icon={<ArrowLeftOutlined />}>返回</Button>}
@@ -315,7 +356,7 @@ export default function KepuTab() {
             return (
               <div key={i} style={{ marginBottom: 12, padding: 12, borderRadius: 8, border: '1px solid #e8e8e8', background: '#fafafa' }}>
                 <Space style={{ marginBottom: 4 }}>
-                  <Tag color="purple">第 {i + 1} 分镜</Tag>
+                  <Tag color="purple">第{i + 1} 分镜</Tag>
                   <Tag color="blue">{(tts?.duration || '-') + 's'}</Tag>
                   <Text type="secondary" style={{ fontSize: 12 }}>{scene.stage}</Text>
                 </Space>
@@ -336,11 +377,132 @@ export default function KepuTab() {
               </div>
             )
           })}
-          <Alert type="info" message="Prompts ready. 请到「产品创作」页面保存并生成视频." style={{ marginTop: 12 }} />
+          <Button type="primary" icon={<VideoCameraOutlined />} onClick={() => { setClips(new Array(scenes.length).fill({ video_path: "", status: "pending", error: "" })); setCurrent(4) }} style={{ marginTop: 12 }} block>
+            下一步：生成视频片段
+          </Button>
+          {loading && (
+            <div style={{ marginTop: 12, textAlign: 'center' }}>
+              <Progress type="circle" percent={50} status="active" size={60} />
+              <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>{loadingStep}</Text>
+              <Text type="secondary" style={{ fontSize: 11 }}>视频生成较慢，每个片段约1-3分钟</Text>
+            </div>
+          )}
         </Card>
       )}
-    </>
-  )}
+
+      {/* Step 4: 逐分镜生成视频 */}
+      {current === 4 && (
+        <Card title="生成视频片段"
+          extra={<Button size="small" onClick={() => setCurrent(3)} icon={<ArrowLeftOutlined />}>返回</Button>}
+          style={{ maxWidth: 900 }}>
+          <Alert type="info" message="逐个生成，不满意可编辑提示词后重新生成" style={{ marginBottom: 16 }} />
+          {scenes.map((scene, i) => {
+            const nar = narrations[i], tts = ttsResults[i]
+            const clip = clips[i] || { status: 'pending', video_path: '', error: '' }
+            const isGenerating = clip.status === 'generating'
+            const isDone = clip.status === 'done'
+            const isError = clip.status === 'error'
+            const hasVideo = isDone && clip.video_path && (clip.video_path.startsWith('http://') || clip.video_path.startsWith('https://'))
+            const isEditing = clipEditIdx === i
+            return (
+              <div key={i} style={{ marginBottom: 12, padding: 12, borderRadius: 8, border: '1px solid #e8e8e8', background: isDone ? '#f6ffed' : isError ? '#fff2f0' : '#fafafa' }}>
+                <Space style={{ marginBottom: 8 }}>
+                  <Tag color="purple">分镜 {i + 1}/{scenes.length}</Tag>
+                  <Tag color="blue">{tts?.duration || '-'}s</Tag>
+                  {isDone && <Tag color="green">已生成</Tag>}
+                  {isGenerating && <Tag color="orange">生成中...</Tag>}
+                  {isError && <Tag color="red">失败</Tag>}
+                  {clip.status === 'pending' && <Tag>待生成</Tag>}
+                </Space>
+                <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>旁白: {(nar?.voice_script || '').substring(0, 60)}...</div>
+                {/* Scene prompt - editable */}
+                <div style={{ marginBottom: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>提示词：</Text>
+                  {isEditing ? (
+                    <div>
+                      <TextArea value={clipEditText} onChange={e => setClipEditText(e.target.value)} rows={3} style={{ fontSize: 12, margin: '4px 0' }} />
+                      <Space>
+                        <Button size="small" type="primary" onClick={() => setClipEditIdx(-1)}>确认</Button>
+                        <Button size="small" onClick={() => setClipEditIdx(-1)}>取消</Button>
+                      </Space>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: '#999', lineHeight: 1.5, maxHeight: 36, overflow: 'hidden' }}>
+                      {scene?.scene_prompt?.substring(0, 120) || '无'}...
+                    </div>
+                  )}
+                </div>
+                {isGenerating && <Progress percent={50} status="active" size="small" style={{ marginBottom: 8 }} />}
+                {hasVideo && (
+                  <video controls style={{ width: '100%', maxHeight: 240, borderRadius: 8, background: '#000', marginBottom: 8 }} src={clip.video_path} />
+                )}
+                {isError && <Alert type="error" message={clip.error || '生成失败'} style={{ marginBottom: 8 }} />}
+                <Space>
+                  <Button
+                    size="small"
+                    type="primary"
+                    icon={<VideoCameraOutlined />}
+                    loading={isGenerating}
+                    onClick={() => handleGenerateSingleClip(i)}
+                    disabled={isGenerating}
+                  >
+                    {isDone ? '重新生成' : isGenerating ? '生成中...' : '生成'}
+                  </Button>
+                  {!isGenerating && (
+                    <Button size="small" icon={<EditOutlined />}
+                      onClick={() => { setClipEditIdx(i); setClipEditText(scene?.scene_prompt || '') }}>
+                      编辑提示词
+                    </Button>
+                  )}
+                </Space>
+              </div>
+            )
+          })}
+          {clips.filter(c => c?.status === 'done').length > 0 && (
+            <Button type="primary" icon={<PlayCircleOutlined />} onClick={handleCompose} loading={composeLoading} block style={{ marginTop: 12 }}>
+              合成最终视频 ({clips.filter(c => c?.status === 'done').length}/{scenes.length} 个片段)
+            </Button>
+          )}
+        </Card>
+      )}      {/* Step 5: 合成导出 */}
+      {current === 5 && (
+        <Card title="合成导出"
+          extra={<Button size="small" onClick={() => setCurrent(4)} icon={<ArrowLeftOutlined />}>返回</Button>}
+          style={{ maxWidth: 900 }}>
+          {composeResult?.ok ? (
+            <div style={{ textAlign: 'center', padding: 24 }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>🎬</div>
+              <Title level={4}>视频合成完成</Title>
+              {composeResult.duration && <Text type="secondary">总时长: {composeResult.duration}秒</Text>}
+              <div style={{ marginTop: 24 }}>
+                <video controls style={{ width: '100%', maxHeight: 480, borderRadius: 8, background: '#000' }}
+                  src={'http://localhost:8000/uploads/' + (composeResult.path || '').split('/').pop()} />
+              </div>
+              <Space style={{ marginTop: 16 }}>
+                <Button type="primary" icon={<DownloadOutlined />}
+                  onClick={() => {
+                    const url = 'http://localhost:8000/uploads/' + (composeResult.path || '').split('/').pop()
+                    window.open(url, '_blank')
+                  }}>
+                  下载视频
+                </Button>
+                <Button onClick={handleReset}>新建科普视频</Button>
+              </Space>
+            </div>
+          ) : (
+            <Alert type="error" message={composeResult?.error || '合成失败，请重试'} />
+          )}
+        </Card>
+      )}
+
+      <Modal title="串联旁白" open={concatVisible} onCancel={() => setConcatVisible(false)} footer={[
+        <Button key="copy" type="primary" onClick={() => { navigator.clipboard.writeText(concatText); message.success('已复制') }}>复制全文</Button>,
+        <Button key="close" onClick={() => setConcatVisible(false)}>关闭</Button>
+      ]} width={600}>
+        <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 2, maxHeight: 400, overflow: 'auto', background: '#fafafa', padding: 16, borderRadius: 8 }}>
+          {concatText}
+        </div>
+      </Modal>
     </div>
   )
 }
