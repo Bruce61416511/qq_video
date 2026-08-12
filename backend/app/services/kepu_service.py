@@ -84,6 +84,13 @@ async def generate_script(topic: str, shot_count: int = 3) -> dict:
     result = _extract_json(raw)
     if not result or "hook" not in result or "body" not in result:
         raise RuntimeError(f"LLM 未返回有效剧本 JSON: {raw[:200]}")
+
+    # Strip self-count annotations like 【58字】
+    def _clean(text: str) -> str:
+        return re.sub(r"[【]?\d+字[】]?", "", text).strip()
+    result["hook"] = _clean(result["hook"])
+    result["body"] = [_clean(b) for b in result.get("body", [])]
+    result["ending"] = _clean(result.get("ending", ""))
     return result
 
 

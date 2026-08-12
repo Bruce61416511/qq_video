@@ -105,14 +105,35 @@ export default function KepuTab() {
     } finally { setLoading(false) }
   }
 
+  const handleAddBody = () => {
+    const endingItem = narrations.find(n => n.stage === "ending")
+    const endingIdx = narrations.indexOf(endingItem)
+    const bodyCount = narrations.filter(n => n.stage === "body").length
+    const newBody = { voice_script: "", stage: "body", index: bodyCount + 1 }
+    const updated = [...narrations]
+    updated.splice(endingIdx, 0, newBody)
+    updated.forEach((n, i) => {
+      if (n.stage === "body") n.index = updated.filter((x, k) => x.stage === "body" && k <= i).length
+    })
+    setNarrations(updated)
+    setShotCount(updated.filter(n => n.stage === "body").length + 2)
+    message.success("已添加正文分镜")
+  }
+
   const handleEdit = (i) => { setEditingIndex(i); setEditText(narrations[i]?.voice_script || "") }
   const handleSaveEdit = (i) => {
     const u = [...narrations]; u[i] = { ...u[i], voice_script: editText }; setNarrations(u); setEditingIndex(-1)
   }
   const handleDelete = (i) => {
-    if (narrations.length <= 3) { message.warning("最少3个分镜"); return }
-    const u = narrations.filter((_, j) => j !== i).map((n, j) => ({ ...n, index: j }))
+    const nar = narrations[i]
+    if (nar.stage === "hook" || nar.stage === "ending") { message.warning("钩子和结尾不能删除"); return }
+    if (narrations.filter(n => n.stage === "body").length <= 1) { message.warning("至少保留1段正文"); return }
+    const u = narrations.filter((_, j) => j !== i)
+    u.forEach((n, idx) => {
+      if (n.stage === "body") n.index = u.filter((x, k) => x.stage === "body" && k <= idx).length
+    })
     setNarrations(u)
+    setShotCount(u.filter(n => n.stage === "body").length + 2)
   }
 
   const handleConcat = () => {
@@ -156,26 +177,6 @@ export default function KepuTab() {
       setScenes(data.scenes)
       setCurrent(3)
       message.success("分镜提示词生成成功")
-    } catch (e) {
-      message.error("失败: " + e.message)
-    } finally { setLoading(false) }
-  }
-
-  const handleGenerateVideo = async () => {
-    const validScenes = scenes.filter(s => s.scene_prompt?.trim())
-    if (!validScenes.length) { message.warning("无分镜提示词"); return }
-    const durations = ttsResults.map(r => r.duration)
-    setLoading(true); setLoadingStep("正在生成视频片段 (1/" + validScenes.length + ")...")
-    try {
-      const res = await fetch("http://localhost:8000/api/kepu/generate-video", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenes: validScenes, durations, size: "9:16", resolution: "1080P" }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || "失败")
-      setClips(data.clips || [])
-      setCurrent(4)
-      message.success("视频片段生成完成")
     } catch (e) {
       message.error("失败: " + e.message)
     } finally { setLoading(false) }
@@ -254,7 +255,7 @@ export default function KepuTab() {
     try {
       const res = await fetch("http://localhost:8000/api/kepu/prompts")
       const data = await res.json()
-      const key = file.key === "script" ? "kepu_script_prompt_txt" : "kepu_scene_prompt_txt"
+      const key = file.key === "script" ? "kepu_script_prompt.txt" : "kepu_scene_prompt.txt"
       setEditingContent(data.prompts?.[key] || "")
     } catch (e) { setEditingContent("") }
     setConfigDrawerOpen(true)
@@ -263,7 +264,7 @@ export default function KepuTab() {
     if (!editingFile) return
     setSavingConfig(true)
     try {
-      const key = editingFile.key === "script" ? "kepu_script_prompt_txt" : "kepu_scene_prompt_txt"
+      const key = editingFile.key === "script" ? "kepu_script_prompt.txt" : "kepu_scene_prompt.txt"
       await fetch("http://localhost:8000/api/kepu/prompts", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompts: { [key]: editingContent } }),
@@ -275,8 +276,8 @@ export default function KepuTab() {
   }
 
   const configFiles = [
-    { key: "script", filename: "kepu_script_prompt.txt", description: "剧本提示词 - 控制旁白分镜生成逻辑" },
-    { key: "scene", filename: "kepu_scene_prompt.txt", description: "分镜提示词 - 控制画面/镜头/风格" },
+    { key: "script", filename: "kepu_script_prompt.txt", description: "剧本提示词" },
+    { key: "scene", filename: "kepu_scene_prompt.txt", description: "分镜提示词" },
   ]
 
   const tabItems = [
@@ -291,9 +292,7 @@ export default function KepuTab() {
               <Button size="small" danger onClick={handleReset}>清除全部</Button>
             </Space>
           </div>
-
           <Steps current={current} items={stepItems} size="small" style={{ marginBottom: 24 }} onChange={(step) => setCurrent(step)} />
-
           {current === 0 && (
             <Card title="话题输入" style={{ maxWidth: 700 }}>
               <Space direction="vertical" size="middle" style={{ width: "100%" }}>
@@ -302,19 +301,16 @@ export default function KepuTab() {
                   <TextArea value={topic} onChange={e => setTopic(e.target.value)} placeholder="例如：酱油为什么这么鲜" rows={3} style={{ marginTop: 8 }} />
                 </div>
                 <div>
-                  <Text strong>正文分镜数</Text>
+                  <Text strong>总镜头数</Text>
                   <InputNumber min={3} max={8} value={shotCount} onChange={v => setShotCount(v || 3)} style={{ marginLeft: 12, width: 100 }} />
                 </div>
-                <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleGenerateScript} loading={loading} block>
-                  生成剧本
-                </Button>
+                <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleGenerateScript} loading={loading} block>生成剧本</Button>
               </Space>
             </Card>
           )}
-
           {current === 1 && (
             <Card title="旁白分镜"
-              extra={<Button size="small" onClick={() => setCurrent(0)} icon={<ArrowLeftOutlined />}>返回</Button>}
+              extra={<Space><Text type="secondary" style={{ fontSize: 12 }}>预估总时长：{Math.round(narrations.reduce((sum, n) => sum + (n.voice_script || "").length, 0) / 4.0)}s / {shotCount * 15}s</Text><Button size="small" onClick={() => setCurrent(0)} icon={<ArrowLeftOutlined />}>返回</Button></Space>}
               style={{ maxWidth: 700 }}>
               {narrations.map((nar, i) => {
                 const charCount = (nar.voice_script || "").length
@@ -325,11 +321,12 @@ export default function KepuTab() {
                     <Tag color={nar.stage === "hook" ? "red" : nar.stage === "ending" ? "green" : "blue"}>
                       {nar.stage === "hook" ? "钩子" : nar.stage === "ending" ? "结尾" : "正文" + nar.index}
                     </Tag>
-                    <Tag color={(nar.stage === "hook" ? charCount > 55 : charCount > 50) ? "red" : estDuration > 15 ? "orange" : "default"}>
-                      {(nar.stage === "hook" ? charCount > 55 : charCount > 50) ? charCount + "字 " + estDuration + "s 超限" : estDuration > 15 ? charCount + "字 " + estDuration + "s" : charCount + "字 " + estDuration + "s"}
-                    </Tag>
+                    <Tag color={charCount > 60 ? "red" : "default"}>{charCount}字 {estDuration}s{charCount > 60 ? " !" : ""}</Tag>
                     {editingIndex !== i && (
-                      <Button size="small" type="text" icon={<EditOutlined />} onClick={() => handleEdit(i)} />
+                      <Space size={0}>
+                        <Button size="small" type="text" icon={<EditOutlined />} onClick={() => handleEdit(i)} />
+                        {nar.stage === "body" && <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(i)} />}
+                      </Space>
                     )}
                   </Space>
                   {editingIndex === i ? (
@@ -345,14 +342,14 @@ export default function KepuTab() {
               )})}
               <Space style={{ marginTop: 8 }}>
                 <Button icon={<CopyOutlined />} onClick={handleConcat}>串联旁白</Button>
+                <Button icon={<EditOutlined />} onClick={handleAddBody}>添加正文</Button>
                 <Button type="primary" icon={<AudioOutlined />} onClick={handleTts} loading={loading}>生成TTS</Button>
               </Space>
             </Card>
           )}
-
           {current === 2 && (
             <Card title="配音合成"
-              extra={<Button size="small" onClick={() => setCurrent(1)} icon={<ArrowLeftOutlined />}>返回</Button>}
+              extra={<Space><Text type="secondary" style={{ fontSize: 12 }}>音频总时长：{ttsResults.reduce((sum, r) => sum + r.duration, 0).toFixed(1)}s</Text><Button size="small" onClick={() => setCurrent(1)} icon={<ArrowLeftOutlined />}>返回</Button></Space>}
               style={{ maxWidth: 700 }}>
               {narrations.filter(n => n.voice_script.trim()).map((nar, i) => {
                 const tts = ttsResults[i]
@@ -369,7 +366,6 @@ export default function KepuTab() {
               </Space>
             </Card>
           )}
-
           {current === 3 && (
             <Card title="分镜提示词"
               extra={<Button size="small" onClick={() => setCurrent(2)} icon={<ArrowLeftOutlined />}>返回</Button>}
@@ -381,7 +377,6 @@ export default function KepuTab() {
                     <Space style={{ marginBottom: 4 }}>
                       <Tag color="purple">第{i + 1} 分镜</Tag>
                       <Tag color="blue">{(tts?.duration || "-") + "s"}</Tag>
-                      <Text type="secondary" style={{ fontSize: 12 }}>{scene.stage}</Text>
                     </Space>
                     <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>旁白: {(nar?.voice_script?.substring(0, 50) || "")}...</div>
                     {editingSceneIdx === i ? (
@@ -405,7 +400,6 @@ export default function KepuTab() {
               </Button>
             </Card>
           )}
-
           {current === 4 && (
             <Card title="生成视频片段"
               extra={<Button size="small" onClick={() => setCurrent(3)} icon={<ArrowLeftOutlined />}>返回</Button>}
@@ -452,21 +446,13 @@ export default function KepuTab() {
                     )}
                     {isError && <Alert type="error" message={clip.error || "生成失败"} style={{ marginBottom: 8 }} />}
                     <Space>
-                      <Button
-                        size="small"
-                        type="primary"
-                        icon={<VideoCameraOutlined />}
-                        loading={isGenerating}
-                        onClick={() => handleGenerateSingleClip(i)}
-                        disabled={isGenerating}
-                      >
+                      <Button size="small" type="primary" icon={<VideoCameraOutlined />} loading={isGenerating}
+                        onClick={() => handleGenerateSingleClip(i)} disabled={isGenerating}>
                         {isDone ? "重新生成" : isGenerating ? "生成中..." : "生成"}
                       </Button>
                       {!isGenerating && (
                         <Button size="small" icon={<EditOutlined />}
-                          onClick={() => { setClipEditIdx(i); setClipEditText(scene?.scene_prompt || "") }}>
-                          编辑提示词
-                        </Button>
+                          onClick={() => { setClipEditIdx(i); setClipEditText(scene?.scene_prompt || "") }}>编辑提示词</Button>
                       )}
                     </Space>
                   </div>
@@ -479,7 +465,6 @@ export default function KepuTab() {
               )}
             </Card>
           )}
-
           {current === 5 && (
             <Card title="合成导出"
               extra={<Button size="small" onClick={() => setCurrent(4)} icon={<ArrowLeftOutlined />}>返回</Button>}
@@ -495,12 +480,7 @@ export default function KepuTab() {
                   </div>
                   <Space style={{ marginTop: 16 }}>
                     <Button type="primary" icon={<DownloadOutlined />}
-                      onClick={() => {
-                        const url = "http://localhost:8000/uploads/" + (composeResult.path || "").split("/").pop()
-                        window.open(url, "_blank")
-                      }}>
-                      下载视频
-                    </Button>
+                      onClick={() => { window.open("http://localhost:8000/uploads/" + (composeResult.path || "").split("/").pop(), "_blank") }}>下载视频</Button>
                     <Button onClick={handleReset}>新建科普视频</Button>
                   </Space>
                 </div>
@@ -531,14 +511,6 @@ export default function KepuTab() {
               )}
             />
           </Card>
-          <Card size="small" style={{ marginTop: 16 }}>
-            <span style={{ fontWeight: 600, fontSize: 13 }}>使用说明</span>
-            <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12, color: "#6c777b", lineHeight: 2 }}>
-              <li>修改提示词后点击保存，下次生成时生效</li>
-              <li>剧本提示词控制旁白分镜的内容风格和字数限制</li>
-              <li>分镜提示词控制画面描述、镜头运动、光线等视觉元素</li>
-            </ul>
-          </Card>
         </div>
       ),
     },
@@ -561,7 +533,6 @@ export default function KepuTab() {
           placeholder="输入文件内容..."
         />
       </Drawer>
-
       <Modal title="串联旁白" open={concatVisible} onCancel={() => setConcatVisible(false)} footer={[
         <Button key="copy" type="primary" onClick={() => { navigator.clipboard.writeText(concatText); message.success("已复制") }}>复制全文</Button>,
         <Button key="close" onClick={() => setConcatVisible(false)}>关闭</Button>
