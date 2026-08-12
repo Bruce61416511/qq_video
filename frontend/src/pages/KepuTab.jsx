@@ -43,12 +43,16 @@ export default function KepuTab() {
   const [editingContent, setEditingContent] = useState("")
   const [savingConfig, setSavingConfig] = useState(false)
 
+  // maxStep 从数据自动推导：完成到哪个步骤
+  const maxStep = composeResult ? 5 : clips.length > 0 ? 4 : scenes.length > 0 ? 3 : ttsResults.length > 0 ? 2 : narrations.length > 0 ? 1 : 0
+
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("kepu_state"))
       if (saved) {
         if (saved.topic) setTopic(saved.topic)
         if (saved.totalDuration) setTotalDuration(saved.totalDuration)
+        if (saved.fullScript) setFullScript(saved.fullScript)
         if (saved.current !== undefined) setCurrent(saved.current)
         if (saved.narrations) setNarrations(saved.narrations)
         if (saved.ttsResults) setTtsResults(saved.ttsResults)
@@ -62,9 +66,17 @@ export default function KepuTab() {
 
   useEffect(() => {
     if (!loaded) return
-    const state = { topic, totalDuration, current, narrations, ttsResults, scenes, clips, composeResult }
+    const state = { topic, totalDuration, fullScript, current, narrations, ttsResults, scenes, clips, composeResult }
     localStorage.setItem("kepu_state", JSON.stringify(state))
-  }, [loaded, topic, totalDuration, current, narrations, ttsResults, scenes, clips, composeResult])
+  }, [loaded, topic, totalDuration, fullScript, current, narrations, ttsResults, scenes, clips, composeResult])
+
+  // 回到话题输入页时，如果 fullScript 为空但有旁白，从旁白重建
+  useEffect(() => {
+    if (current === 0 && !fullScript && narrations.length > 0) {
+      const rebuilt = narrations.map(n => n.voice_script || "").filter(Boolean).join("\n\n")
+      if (rebuilt) setFullScript(rebuilt)
+    }
+  }, [current, fullScript, narrations])
 
   const handleReset = () => {
     setTopic("")
@@ -74,6 +86,7 @@ export default function KepuTab() {
     setScenes([])
     setClips([])
     setComposeResult(null)
+    setFullScript("")
     setCurrent(0)
     localStorage.removeItem("kepu_state")
     message.info("已清除全部数据")
@@ -125,34 +138,6 @@ export default function KepuTab() {
     } catch (e) {
       message.error("拆分失败: " + e.message)
     } finally { setSplitLoading(false) }
-  }
-
-  const handleGenerateScript = async () => {
-    if (!topic.trim()) { message.warning("请输入话题"); return }
-    setLoading(true)
-    setLoadingStep("正在生成剧本...")
-    try {
-      const res = await fetch("http://localhost:8000/api/kepu/script", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: topic.trim(), shot_count: Math.ceil(totalDuration / 15) }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || "失败")
-      const nars = [
-        { voice_script: data.script.hook, stage: "hook", index: 0 },
-        ...data.script.body.map((text, i) => ({ voice_script: text, stage: "body", index: i + 1 })),
-        { voice_script: data.script.ending, stage: "ending", index: data.script.body.length + 1 },
-      ]
-      setNarrations(nars)
-      setTtsResults([])
-      setScenes([])
-      setClips([])
-      setComposeResult(null)
-      setCurrent(1)
-      message.success("剧本生成成功")
-    } catch (e) {
-      message.error("失败: " + e.message)
-    } finally { setLoading(false) }
   }
 
   const handleAddBody = () => {
@@ -339,14 +324,14 @@ export default function KepuTab() {
       key: "studio",
       label: "创作工作台",
       children: (
-        <div style={{ maxWidth: 900, margin: "0 auto" }}>
+        <div style={{ maxWidth: 900 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
             <Title level={3} style={{ margin: 0 }}>科普创作</Title>
             <Space>
               <Button size="small" danger onClick={handleReset}>清除全部</Button>
             </Space>
           </div>
-          <Steps current={current} items={stepItems} size="small" style={{ marginBottom: 24 }} onChange={(step) => setCurrent(step)} />
+          <Steps current={current} items={stepItems} size="small" style={{ marginBottom: 24 }} onChange={(step) => { if (step <= maxStep) setCurrent(step) }} />
           {current === 0 && (
             <Card title="话题输入" style={{ maxWidth: 700 }}>
               <Space direction="vertical" size="middle" style={{ width: "100%" }}>
@@ -391,13 +376,6 @@ export default function KepuTab() {
                   </>
                 )}
 
-                <Divider style={{ margin: "4px 0" }} />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  💡 新流程：先生成完整剧本，再自动拆分为分镜。如需旧版一步到位，点下方按钮。
-                </Text>
-                <Button type="link" size="small" onClick={handleGenerateScript} loading={loading && splitLoading}>
-                  使用旧版：一步生成剧本+分镜
-                </Button>
               </Space>
             </Card>
           )}
