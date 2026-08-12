@@ -222,8 +222,28 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
                 filter_parts.append(f"anullsrc=r=44100:cl=stereo:d={clip_dur}[a_pad_{i}]")
                 a_labels.append(f"[a_pad_{i}]")
         n = len(v_indices)
-        v_concat = "".join(f"[v{vi}]" for vi in v_indices)
-        filter_parts.append(f"{v_concat}concat=n={n}:v=1:a=0[vout]")
+        # Use xfade for smooth transitions between clips
+        if n > 1:
+            # Build xfade chain: clip0 -> fade to clip1 -> fade to clip2 -> ...
+            prev = f"[v{v_indices[0]}]"
+            # Calculate cumulative durations for offset
+            cum_dur = 0.0
+            for idx in range(n):
+                cur = f"[v{v_indices[idx]}]"
+                if idx == 0:
+                    prev = cur
+                    cum_dur += probed_durations[idx][0]
+                    continue
+                clip_dur = probed_durations[idx-1][0]
+                offset = cum_dur - 0.3  # start fade 0.3s before end of prev clip
+                xfade_label = f"xfade{idx}"
+                filter_parts.append(f"{prev}{cur}xfade=transition=fade:duration=0.3:offset={offset:.1f}[{xfade_label}]")
+                prev = f"[{xfade_label}]"
+                cum_dur += probed_durations[idx][0] - 0.3  # account for overlap
+            filter_parts.append(f"{prev}format=yuv420p[vout]")
+        else:
+            v_concat = f"[v{v_indices[0]}]"
+            filter_parts.append(f"{v_concat}concat=n=1:v=1:a=0[vout]")
         a_concat = "".join(a_labels)
         filter_parts.append(f"{a_concat}concat=n={n}:v=0:a=1[aout]")
         if ass_file:
