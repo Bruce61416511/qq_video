@@ -1,7 +1,10 @@
 """科普创作路由：剧本 / TTS / 分镜提示词 / 视频生成"""
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from ..services.kepu_service import generate_script, synthesize_tts, generate_scenes
+from ..database import get_db
+from ..models.models import Media, MediaStatus
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/api/kepu", tags=["科普创作"])
 
@@ -155,17 +158,19 @@ async def kepu_generate_single_clip(data: dict = Body(...)):
     except Exception as e:
         raise HTTPException(500, str(e))
 @router.post("/compose")
-async def kepu_compose(data: dict = Body(...)):
+async def kepu_compose(data: dict = Body(...), db: AsyncSession = Depends(get_db)):
     """视频片段 + 音频 + 字幕 → ffmpeg 合成最终视频"""
     clips = data.get("clips", [])
     size = data.get("size", "9:16")
     resolution = data.get("resolution", "1080P")
+    topic = data.get("topic", "").strip()
 
     if not clips:
         raise HTTPException(400, "clips 参数不能为空")
 
     try:
         import uuid
+        import subprocess
         from ..services.video_composer import compose_video
         from ..config import UPLOAD_DIR
 
@@ -186,6 +191,44 @@ async def kepu_compose(data: dict = Body(...)):
 
         output_path = str(UPLOAD_DIR / f"kepu_composed_{uuid.uuid4().hex}.mp4")
         result = await compose_video(resolved_clips, output_path, size=size, resolution=resolution)
+
+        # 合成成功后写入素材库
+        if result.get("ok") and os.path.exists(output_path):
+            file_size = os.path.getsize(output_path)
+            size_mb = f"{file_size / (1024 * 1024):.1f} MB"
+
+            # ffprobe 获取时长
+            duration_str = "--:--"
+            try:
+                proc = subprocess.run(
+                    ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                     "-of", "csv=p=0", output_path],
+                    capture_output=True, text=True, timeout=10
+                )
+                if proc.returncode == 0:
+                    dur_sec = float(proc.stdout.strip())
+                    m, s = divmod(int(dur_sec), 60)
+                    duration_str = f"{m}:{s:02d}"
+            except Exception:
+                pass
+
+            video_name = f"科普视频_{topic}" if topic else f"科普视频_{uuid.uuid4().hex[:8]}"
+            media = Media(
+                name=video_name,
+                filepath=output_path,
+                size=size_mb,
+                duration=duration_str,
+                status=MediaStatus.ready,
+                source="kepu",
+                prompt=topic or "",
+                video_size=size,
+                video_resolution=resolution,
+            )
+            db.add(media)
+            await db.commit()
+            await db.refresh(media)
+            result["media_id"] = media.id
+
         return result
     except Exception as e:
         raise HTTPException(500, str(e))

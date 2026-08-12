@@ -238,7 +238,7 @@ export default function KepuTab() {
     try {
       const res = await fetch("http://localhost:8000/api/kepu/compose", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clips: composedClips, size: "9:16", resolution: "1080P" }),
+        body: JSON.stringify({ clips: composedClips, size: "9:16", resolution: "1080P", topic }),
       })
       const data = await res.json()
       if (!res.ok || !data.ok) throw new Error(data.error || data.detail || "合成失败")
