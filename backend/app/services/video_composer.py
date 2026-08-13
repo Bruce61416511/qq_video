@@ -138,7 +138,7 @@ async def _merge_single(clip: dict, output_path: str, size: str, resolution: str
     if not video_path or not os.path.exists(video_path):
         return {"ok": False, "error": f"???????: {video_path}"}
     ass_file = _generate_ass([clip])
-    vf_parts = [_scale_filter(size, resolution), "setsar=1"]
+    vf_parts = [_scale_filter(size, resolution), "noise=alls=7:allf=t+u", "setsar=1"]
     inputs = ["-i", video_path]
     if audio_path and os.path.exists(audio_path):
         inputs += ["-i", audio_path]
@@ -209,7 +209,7 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
             vi = len([x for x in cmd if x == "-i"])
             cmd.extend(["-i", c["video_path"]])
             v_indices.append(vi)
-            vf = f"[{vi}:v]{scale},setsar=1"
+            vf = f"[{vi}:v]{scale},noise=alls=7:allf=t+u,setsar=1"
             filter_parts.append(f"{vf}[v{vi}]")
             audio_path = c.get("audio_path", "")
             clip_dur = probed_durations[i][0]
