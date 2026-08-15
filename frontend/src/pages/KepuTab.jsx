@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Card, Input, Button, InputNumber, Space, Tag, Alert, Progress, message, Steps, Typography, Tabs, Modal, Drawer, List , Divider } from 'antd'
-import { EditOutlined, ThunderboltOutlined, DeleteOutlined, AudioOutlined, PictureOutlined, ArrowLeftOutlined, CopyOutlined, VideoCameraOutlined, PlayCircleOutlined, DownloadOutlined, SettingOutlined, FileTextOutlined } from '@ant-design/icons'
+import { EditOutlined, PlusOutlined, ThunderboltOutlined, DeleteOutlined, AudioOutlined, PictureOutlined, ArrowLeftOutlined, CopyOutlined, VideoCameraOutlined, PlayCircleOutlined, DownloadOutlined, SettingOutlined, FileTextOutlined } from '@ant-design/icons'
 
 const { TextArea } = Input
 const { Text, Title } = Typography
@@ -155,6 +155,18 @@ export default function KepuTab() {
     message.success("已添加正文分镜")
   }
 
+  const handleAddBodyAfter = (i) => {
+    const bodyCount = narrations.filter(n => n.stage === "body").length
+    const newBody = { voice_script: "", stage: "body", index: bodyCount + 1 }
+    const updated = [...narrations]
+    updated.splice(i + 1, 0, newBody)
+    updated.forEach((n, idx) => {
+      if (n.stage === "body") n.index = updated.filter((x, k) => x.stage === "body" && k <= idx).length
+    })
+    setNarrations(updated)
+    setTotalDuration((updated.filter(n => n.stage === "body").length + 2) * 15)
+    message.success("已添加正文分镜")
+  }
   const handleEdit = (i) => { setEditingIndex(i); setEditText(narrations[i]?.voice_script || "") }
   const handleSaveEdit = (i) => {
     const u = [...narrations]; u[i] = { ...u[i], voice_script: editText }; setNarrations(u); setEditingIndex(-1)
@@ -395,7 +407,12 @@ export default function KepuTab() {
                     {editingIndex !== i && (
                       <Space size={0}>
                         <Button size="small" type="text" icon={<EditOutlined />} onClick={() => handleEdit(i)} />
-                        {nar.stage === "body" && <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(i)} />}
+                        {nar.stage === "body" && (
+                          <>
+                            <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(i)} />
+                            <Button size="small" type="text" icon={<PlusOutlined />} onClick={() => handleAddBodyAfter(i)} />
+                          </>
+                        )}
                       </Space>
                     )}
                   </Space>
@@ -448,7 +465,7 @@ export default function KepuTab() {
                       <Tag color="purple">第{i + 1} 分镜</Tag>
                       <Tag color="blue">{(tts?.duration || "-") + "s"}</Tag>
                     </Space>
-                    <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>旁白: {(nar?.voice_script?.substring(0, 50) || "")}...</div>
+                    <div style={{ fontSize: 12, color: "#666", marginBottom: 8, whiteSpace: "pre-wrap", lineHeight: 1.6, wordBreak: "break-word" }}>旁白：{nar?.voice_script || ""}</div>
                     {editingSceneIdx === i ? (
                       <div>
                         <TextArea value={editSceneText} onChange={e => setEditSceneText(e.target.value)} rows={4} style={{ fontSize: 12, marginBottom: 4 }} />
