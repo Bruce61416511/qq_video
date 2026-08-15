@@ -269,6 +269,22 @@ export default function KepuTab() {
     }
   }
 
+  const handleCopyScenes = async () => {
+    if (!scenes.length) { message.warning("暂无分镜提示词"); return }
+    const stageMap = { hook: "钩子", body: "正文", ending: "结尾", evidence: "论据", scene: "场景", cta: "行动号召" }
+    const text = scenes.map((scene, i) => {
+      const nar = narrations[i] || {}
+      const tts = ttsResults[i] || {}
+      const stageLabel = scene?.stage && stageMap[scene.stage] ? `（${stageMap[scene.stage]}）` : ""
+      return `【分镜 ${i + 1}${stageLabel}】${tts?.duration ? ` ${tts.duration}s` : ""}\n旁白：${nar.voice_script || ""}\n提示词：${scene?.scene_prompt || ""}`
+    }).join("\n\n")
+    try {
+      await navigator.clipboard.writeText(text)
+      message.success("已复制全部分镜文案")
+    } catch (e) {
+      message.error("复制失败，请检查浏览器剪贴板权限")
+    }
+  }
   const handleCompose = async () => {
     if (!clips.length) { message.warning("无视频片段"); return }
     const composedClips = clips.map((clip, i) => {
@@ -443,7 +459,7 @@ export default function KepuTab() {
                 return (
                   <div key={i} style={{ marginBottom: 12, padding: 12, borderRadius: 8, border: "1px solid #e8e8e8", background: "#fafafa" }}>
                     <Space><Tag color="blue">第{i + 1} 分镜</Tag>{tts && <Tag color="green">{tts.duration}s</Tag>}</Space>
-                    <div style={{ fontSize: 13, color: "#666", marginTop: 4 }}>{nar.voice_script.substring(0, 60)}...</div>
+                    <div style={{ fontSize: 13, color: "#666", marginTop: 4, whiteSpace: "pre-wrap", lineHeight: 1.7, wordBreak: "break-word" }}>{nar.voice_script}</div>
                     {tts?.audio_path && <audio controls style={{ width: "100%", marginTop: 8, height: 32 }} src={"http://localhost:8000" + tts.audio_path} />}
                   </div>
                 )
@@ -482,7 +498,8 @@ export default function KepuTab() {
                   </div>
                 )
               })}
-              <Button type="primary" icon={<VideoCameraOutlined />} onClick={() => { setClips(new Array(scenes.length).fill({ video_path: "", status: "pending", error: "" })); setCurrent(4) }} style={{ marginTop: 12 }} block>
+              <Button icon={<CopyOutlined />} onClick={handleCopyScenes} block style={{ marginTop: 12 }}>复制全部分镜文案</Button>
+              <Button type="primary" icon={<VideoCameraOutlined />} onClick={() => { setClips(new Array(scenes.length).fill({ video_path: "", status: "pending", error: "" })); setCurrent(4) }} style={{ marginTop: 8 }} block>
                 下一步：生成视频片段
               </Button>
             </Card>
