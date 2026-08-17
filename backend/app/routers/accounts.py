@@ -84,7 +84,7 @@ async def bind_account(account_id: int, db: AsyncSession = Depends(get_db)):
 async def check_account_valid(account_id: int, db: AsyncSession = Depends(get_db)):
     acc = await db.get(Account, account_id)
     if not acc:
-        raise HTTPException(404, "?????")
+        raise HTTPException(404, "账号不存在")
     result = await check_cookies_visible(account_id)
     if not result["valid"] and acc.status == AccountStatus.online:
         acc.status = AccountStatus.expired

@@ -1,5 +1,7 @@
 """科普创作路由：剧本 / TTS / 分镜提示词 / 视频生成"""
 
+import os
+
 from fastapi import APIRouter, Body, Depends, HTTPException
 from ..services.kepu_service import synthesize_tts, generate_scenes, generate_full_script, split_full_script
 from ..database import get_db

@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
     await start_worker()
     yield
 
-app = FastAPI(title="鐟欏棝顣堕崣宄板И閹?API", lifespan=lifespan)
+app = FastAPI(title="视频号助手 API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,6 +1,6 @@
 """
-??????
-?? ffmpeg + ASS ??????? + ?? + ?????????
+视频合成服务
+使用 ffmpeg + ASS 字幕将视频片段、配音与字幕合成为最终视频
 """
 import os
 import tempfile
@@ -17,7 +17,7 @@ async def compose_video(
     resolution: str = "1080P",
 ) -> dict:
     if not clips:
-        return {"ok": False, "error": "??????"}
+        return {"ok": False, "error": "没有可合成的视频片段"}
     if output_path is None:
         output_path = str(UPLOAD_DIR / f"composed_{uuid.uuid4().hex}.mp4")
     if len(clips) == 1 and clips[0].get("video_path") and os.path.exists(clips[0]["video_path"]):
@@ -136,7 +136,7 @@ async def _merge_single(clip: dict, output_path: str, size: str, resolution: str
     video_path = clip.get("video_path", "")
     audio_path = clip.get("audio_path", "")
     if not video_path or not os.path.exists(video_path):
-        return {"ok": False, "error": f"???????: {video_path}"}
+        return {"ok": False, "error": f"视频文件不存在：{video_path}"}
     ass_file = _generate_ass([clip])
     vf_parts = [_scale_filter(size, resolution), "noise=alls=7:allf=t+u", "setsar=1"]
     inputs = ["-i", video_path]
@@ -277,9 +277,9 @@ async def _run_ffmpeg(cmd: list, output_path: str) -> dict:
                 duration = round(float(info.get("format", {}).get("duration", 0)))
             return {"ok": True, "path": output_path, "duration": duration}
         else:
-            return {"ok": False, "error": "???????"}
+            return {"ok": False, "error": "视频合成失败：未生成输出文件"}
     except FileNotFoundError:
-        return {"ok": False, "error": "ffmpeg ???????? ffmpeg"}
+        return {"ok": False, "error": "未找到 ffmpeg，请确认已安装 ffmpeg 并加入系统 PATH"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
