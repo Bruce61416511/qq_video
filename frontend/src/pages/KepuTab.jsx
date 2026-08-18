@@ -92,6 +92,9 @@ export default function KepuTab() {
     message.info("已清除全部数据")
   }
 
+  // 总时长由实际旁白字数决定（约 4 字/秒），而非镜头数×15
+  const totalCharsOf = (list) => (list || []).reduce((s, n) => s + (n.voice_script || "").length, 0)
+
   const handleGenerateFullScript = async () => {
     if (!topic.trim()) { message.warning("请输入话题"); return }
     setLoading(true)
@@ -131,8 +134,8 @@ export default function KepuTab() {
       setScenes([])
       setClips([])
       setComposeResult(null)
-      // 根据实际镜头数更新总时长
-      setTotalDuration(nars.length * 15)
+      // 总时长由实际旁白字数决定（约4字/秒），而非镜头数×15
+      setTotalDuration(Math.max(15, Math.ceil(totalCharsOf(nars) / 4)))
       setCurrent(1)
       message.success(`分镜拆分完成，共 ${nars.length} 个镜头`)
     } catch (e) {
@@ -151,7 +154,7 @@ export default function KepuTab() {
       if (n.stage === "body") n.index = updated.filter((x, k) => x.stage === "body" && k <= i).length
     })
     setNarrations(updated)
-    setTotalDuration((updated.filter(n => n.stage === "body").length + 2) * 15)
+    setTotalDuration(Math.max(15, Math.ceil(totalCharsOf(updated) / 4)))
     message.success("已添加正文分镜")
   }
 
@@ -164,7 +167,7 @@ export default function KepuTab() {
       if (n.stage === "body") n.index = updated.filter((x, k) => x.stage === "body" && k <= idx).length
     })
     setNarrations(updated)
-    setTotalDuration((updated.filter(n => n.stage === "body").length + 2) * 15)
+    setTotalDuration(Math.max(15, Math.ceil(totalCharsOf(updated) / 4)))
     message.success("已添加正文分镜")
   }
   const handleEdit = (i) => { setEditingIndex(i); setEditText(narrations[i]?.voice_script || "") }
@@ -180,7 +183,7 @@ export default function KepuTab() {
       if (n.stage === "body") n.index = u.filter((x, k) => x.stage === "body" && k <= idx).length
     })
     setNarrations(u)
-    setTotalDuration((u.filter(n => n.stage === "body").length + 2) * 15)
+    setTotalDuration(Math.max(15, Math.ceil(totalCharsOf(u) / 4)))
   }
 
   const handleConcat = () => {
@@ -202,7 +205,12 @@ export default function KepuTab() {
       if (!res.ok) throw new Error(data.detail || "失败")
       setTtsResults(data.segments)
       setCurrent(2)
-      message.success("TTS合成成功")
+      const failedCount = (data.segments || []).filter(s => !s.audio_path).length
+      if (failedCount > 0) {
+        message.warning(`TTS 合成完成，但有 ${failedCount} 段配音生成失败（未生成音频文件），请检查 TTS 服务/网络后重试`)
+      } else {
+        message.success("TTS合成成功")
+      }
     } catch (e) {
       message.error("失败: " + e.message)
     } finally { setLoading(false) }
@@ -369,7 +377,7 @@ export default function KepuTab() {
                 <div>
                   <Text strong>总时长</Text>
                   <InputNumber min={15} max={300} step={5} value={totalDuration} onChange={v => setTotalDuration(v || 45)} style={{ marginLeft: 12, width: 100 }} addonAfter="秒" />
-                  <Text type="secondary" style={{ marginLeft: 12 }}>≈ {Math.ceil(totalDuration / 15)} 个镜头（每镜15秒）</Text>
+                  <Text type="secondary" style={{ marginLeft: 12 }}>分镜数量由 AI 按内容决定</Text>
                 </div>
 
                 <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleGenerateFullScript} loading={loading && !splitLoading} block>
@@ -398,7 +406,7 @@ export default function KepuTab() {
                       block
                       style={{ background: "#52c41a", borderColor: "#52c41a" }}
                     >
-                      步骤2：拆分为 {Math.ceil(totalDuration / 15)} 个分镜
+                      步骤2：拆分为分镜（数量由 AI 决定）
                     </Button>
                   </>
                 )}
@@ -460,7 +468,11 @@ export default function KepuTab() {
                   <div key={i} style={{ marginBottom: 12, padding: 12, borderRadius: 8, border: "1px solid #e8e8e8", background: "#fafafa" }}>
                     <Space><Tag color="blue">第{i + 1} 分镜</Tag>{tts && <Tag color="green">{tts.duration}s</Tag>}</Space>
                     <div style={{ fontSize: 13, color: "#666", marginTop: 4, whiteSpace: "pre-wrap", lineHeight: 1.7, wordBreak: "break-word" }}>{nar.voice_script}</div>
-                    {tts?.audio_path && <audio controls style={{ width: "100%", marginTop: 8, height: 32 }} src={"http://localhost:8000" + tts.audio_path} />}
+                    {tts?.audio_path ? (
+                      <audio controls style={{ width: "100%", marginTop: 8, height: 32 }} src={"http://localhost:8000" + tts.audio_path} />
+                    ) : (
+                      <div style={{ marginTop: 8, fontSize: 12, color: "#fa8c16" }}>⚠️ 该段配音生成失败，无音频可播放（TTS 服务/网络异常）</div>
+                    )}
                   </div>
                 )
               })}

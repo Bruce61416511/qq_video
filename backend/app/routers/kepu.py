@@ -48,6 +48,7 @@ async def split_script(data: dict = Body(...)):
     if not full_text:
         raise HTTPException(400, "full_text 参数不能为空")
     try:
+        # 参考总时长仅作为节奏参考传给模型，分镜数由大模型自行决定（不再用 时长÷15 硬算）
         result = await split_full_script(full_text, total_duration)
         return {"ok": True, "script": result}
     except Exception as e:

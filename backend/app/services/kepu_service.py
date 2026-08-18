@@ -330,13 +330,14 @@ async def generate_full_script(topic: str, total_duration: int = 60) -> str:
     return raw.strip()
 
 
-async def split_full_script(full_text: str, shot_count: int) -> dict:
-    """连续文稿 → 按镜数拆成 {hook, body, ending}"""
+async def split_full_script(full_text: str, reference_duration: int = None) -> dict:
+    """连续文稿 → 由模型按内容自主拆分为 {hook, body, ending}"""
     prompt = _load_prompt("kepu_split_script_prompt.txt")
     if not prompt:
         raise RuntimeError("kepu_split_script_prompt.txt 缺失")
 
-    user_message = f"总镜头数：{shot_count}\n\n连续文稿：\n{full_text}"
+    ref_note = f"参考总时长：{reference_duration}秒（仅作节奏参考，不要据此硬算镜头数）\n\n" if reference_duration else ""
+    user_message = f"{ref_note}连续文稿：\n{full_text}"
     raw = await _call_llm(prompt, user_message, temperature=0.3, max_tokens=2000)
     result = _extract_json(raw)
     if not result or "hook" not in result or "body" not in result:

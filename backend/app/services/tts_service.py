@@ -5,6 +5,7 @@ TTS 语音合成服务
 """
 import os
 import subprocess
+import asyncio
 import tempfile
 import httpx
 from pathlib import Path
@@ -103,26 +104,30 @@ async def _edge_tts(text: str, output_path: str, voice_id: str = None) -> str:
 
 async def _bailian_tts(text: str, output_path: str, api_key: str, model: str = "qwen-audio-3.0-tts-flash", voice: str = "longanhuan_v3.6") -> str:
     """Aliyun Bailian TTS via dashscope SDK. Model: qwen-audio-3.0-tts-flash"""
-    try:
-        import dashscope
-        from dashscope.audio.tts_v2 import SpeechSynthesizer
-        
-        dashscope.api_key = api_key
-        synthesizer = SpeechSynthesizer(
-            model=model,
-            voice=voice,
-        )
-        audio = synthesizer.call(text)
-        
-        if audio and len(audio) > 100:
-            with open(output_path, "wb") as f:
-                f.write(audio)
-            return output_path
-        else:
-            print(f"[TTS] Bailian: empty audio response")
-    except Exception as e:
-        print(f"[TTS] Bailian error: {e}")
-    
+    last_error = ""
+    for attempt in range(3):
+        try:
+            import dashscope
+            from dashscope.audio.tts_v2 import SpeechSynthesizer
+
+            dashscope.api_key = api_key
+            synthesizer = SpeechSynthesizer(
+                model=model,
+                voice=voice,
+            )
+            audio = synthesizer.call(text)
+
+            if audio and len(audio) > 100:
+                with open(output_path, "wb") as f:
+                    f.write(audio)
+                return output_path
+            last_error = "empty audio response"
+        except Exception as e:
+            last_error = str(e)
+
+        print(f"[TTS] Bailian retry {attempt + 1}/3 failed: {last_error}")
+        await asyncio.sleep(0.8)
+
     return ""
 
 async def _openai_tts(text: str, output_path: str, api_key: str, voice_id: str = None) -> str:

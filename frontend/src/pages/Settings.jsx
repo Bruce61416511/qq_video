@@ -23,17 +23,35 @@ const SETTING_KEYS = {
 
 
 const TTS_MODEL_OPTIONS = [
-  { value: 'qwen-audio-3.0-tts-flash', label: 'qwen-audio-3.0-tts-flash (推荐)' },
-  { value: 'qwen-audio-3.0-tts-plus', label: 'qwen-audio-3.0-tts-plus' },
+  { value: 'qwen-audio-3.0-tts-flash', label: 'qwen-audio-3.0-tts-flash (龙安欢)' },
+  { value: 'qwen-audio-3.0-tts-plus', label: 'qwen-audio-3.0-tts-plus (龙安欢)' },
+  { value: 'cosyvoice-v1', label: 'cosyvoice-v1 (龙小春/龙小夏)' },
+  { value: 'cosyvoice-v2', label: 'cosyvoice-v2 (龙一辰)' },
+  { value: 'cosyvoice-v3-flash', label: 'cosyvoice-v3-flash (龙飞)' },
 ]
 
-const TTS_VOICE_OPTIONS = [
-  { value: 'longanhuan_v3.6', label: '龙安欢 v3.6 (温柔女声·推荐)' },
-  { value: 'longxiaochun', label: '龙小春 (知性女声)' },
-  { value: 'longxiaoxia', label: '龙小夏 (活泼女声)' },
-  { value: 'longyichen', label: '龙一辰 (沉稳男声)' },
-]
+const TTS_VOICE_OPTIONS_BY_MODEL = {
+  'qwen-audio-3.0-tts-flash': [
+    { value: 'longanhuan_v3.6', label: '龙安欢 v3.6 (温柔女声)' },
+  ],
+  'qwen-audio-3.0-tts-plus': [
+    { value: 'longanhuan_v3.6', label: '龙安欢 v3.6 (温柔女声)' },
+  ],
+  'cosyvoice-v1': [
+    { value: 'longxiaochun', label: '龙小春 (知性女声)' },
+    { value: 'longxiaoxia', label: '龙小夏 (活泼女声)' },
+  ],
+  'cosyvoice-v2': [
+    { value: 'longyichen', label: '龙一辰 (沉稳男声)' },
+  ],
+  'cosyvoice-v3-flash': [
+    { value: 'longfei_v3', label: '龙飞 v3 (沉稳男声)' },
+  ],
+}
 
+function getTTSVoiceOptions(model) {
+  return TTS_VOICE_OPTIONS_BY_MODEL[model] || TTS_VOICE_OPTIONS_BY_MODEL['qwen-audio-3.0-tts-flash']
+}
 const LLM_MODEL_BY_SERVICE = {
   openai: [
     { value: 'gpt-4o', label: 'gpt-4o (\u63a8\u8350)' },
@@ -154,7 +172,7 @@ function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, service
             value={config['tts_voice']?.value || undefined}
             placeholder="选择音色"
             onChange={v => setConfig(prev => ({ ...prev, tts_voice: { ...prev['tts_voice'], value: v } }))}
-            options={TTS_VOICE_OPTIONS}
+            options={getTTSVoiceOptions(config['tts_model']?.value)}
           />
         </div>
       )}
