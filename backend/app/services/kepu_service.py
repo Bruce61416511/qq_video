@@ -10,12 +10,17 @@ import asyncio
 import subprocess
 import os
 import httpx
+import shutil
+from datetime import datetime
 from pathlib import Path
 from openai import AsyncOpenAI
 
 from ..config import get_setting, UPLOAD_DIR
 
 PROMPT_DIR = Path(__file__).parent.parent / "prompts"
+CLIP_DIR = UPLOAD_DIR / "clip"
+BACKUP_DIR = CLIP_DIR / "backup"
+PROJECT_FILENAME = "project.json"
 
 
 def _load_prompt(filename: str) -> str:
@@ -84,6 +89,202 @@ async def _download_remote_video(url: str, output_path: Path) -> str:
                     f.write(chunk)
     return str(output_path)
 
+
+async def _copy_files_to_new_backup(files: list[Path], shot_numbers: list = None) -> str:
+    """Copy existing files into the next numbered backup directory without deleting anything."""
+    existing_files = []
+    seen = set()
+    for file_path in files:
+        if file_path and file_path.exists() and file_path.is_file():
+            key = str(file_path)
+            if key not in seen:
+                seen.add(key)
+                existing_files.append(file_path)
+
+    if not existing_files:
+        return ""
+
+    backup_root = BACKUP_DIR
+    backup_root.mkdir(parents=True, exist_ok=True)
+
+    existing_numbers = []
+    for child in backup_root.iterdir():
+        if child.is_dir() and child.name.startswith("backup"):
+            suffix = child.name[6:]
+            if suffix.isdigit():
+                existing_numbers.append(int(suffix))
+    next_number = (max(existing_numbers) + 1) if existing_numbers else 1
+
+    while True:
+        backup_dir = backup_root / f"backup{next_number}"
+        try:
+            backup_dir.mkdir(parents=True, exist_ok=False)
+            break
+        except FileExistsError:
+            next_number += 1
+
+    copied_files = []
+    for src in existing_files:
+        dst = backup_dir / src.name
+        await asyncio.to_thread(shutil.copy2, src, dst)
+        copied_files.append(src.name)
+
+    info = {
+        "backup_dir": str(backup_dir),
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "shot_numbers": [int(x) for x in (shot_numbers or [])],
+        "files": copied_files,
+    }
+    (backup_dir / "backup_info.json").write_text(
+        json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return str(backup_dir)
+
+
+async def _backup_project_files(indices: list[int]) -> str:
+    """Backup current project.json plus the selected shot audio/video files."""
+    clip_dir = CLIP_DIR
+    files = []
+    project_path = clip_dir / PROJECT_FILENAME
+    if project_path.exists():
+        files.append(project_path)
+    for index in indices:
+        files.append(clip_dir / f"kepu_clip_{index + 1:02d}.mp4")
+        files.append(clip_dir / f"kepu_audio_{index + 1:02d}.mp3")
+    return await _copy_files_to_new_backup(files, [index + 1 for index in indices])
+
+
+async def _backup_entire_current_clip() -> str:
+    """Backup every file in the current clip directory before restoring a snapshot."""
+    clip_dir = CLIP_DIR
+    if not clip_dir.exists():
+        return ""
+    files = [child for child in clip_dir.iterdir() if child.is_file()]
+    return await _copy_files_to_new_backup(files, [])
+
+
+def _project_path_for(dir_name: str = None) -> Path:
+    if not dir_name or dir_name == "current":
+        return CLIP_DIR / PROJECT_FILENAME
+    safe_name = str(dir_name)
+    if safe_name.startswith("backup") and Path(safe_name).name == safe_name:
+        return BACKUP_DIR / safe_name / PROJECT_FILENAME
+    raise ValueError("invalid project directory")
+
+
+def save_project(project: dict) -> dict:
+    """Persist the current Kepu project state next to its clip/audio files."""
+    clip_dir = CLIP_DIR
+    clip_dir.mkdir(parents=True, exist_ok=True)
+    payload = dict(project or {})
+    payload["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    project_path = clip_dir / PROJECT_FILENAME
+    project_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return payload
+
+
+def read_project(dir_name: str = None) -> dict:
+    """Read a project manifest from current or a backup directory."""
+    project_path = _project_path_for(dir_name)
+    if not project_path.exists():
+        raise FileNotFoundError(f"project.json not found: {project_path}")
+    return json.loads(project_path.read_text(encoding="utf-8"))
+
+
+def _list_media_files(directory: Path, suffix: str) -> list[str]:
+    if not directory.exists():
+        return []
+    return sorted(
+        child.name for child in directory.iterdir()
+        if child.is_file() and child.name.endswith(suffix)
+    )
+
+
+def list_project_directories() -> list[dict]:
+    """List current workspace and all numbered backup snapshots."""
+    items = [{
+        "key": "current",
+        "label": "current",
+        "path": str(CLIP_DIR),
+        "has_project": (CLIP_DIR / PROJECT_FILENAME).exists(),
+    }]
+    if not BACKUP_DIR.exists():
+        return items
+
+    children = []
+    for child in BACKUP_DIR.iterdir():
+        if not child.is_dir() or not child.name.startswith("backup"):
+            continue
+        suffix = child.name[6:]
+        if not suffix.isdigit():
+            continue
+        info = {}
+        info_path = child / "backup_info.json"
+        if info_path.exists():
+            try:
+                info = json.loads(info_path.read_text(encoding="utf-8"))
+            except Exception:
+                info = {}
+        children.append((int(suffix), child, info))
+
+    for number, child, info in sorted(children, key=lambda x: x[0], reverse=True):
+        items.append({
+            "key": child.name,
+            "label": child.name,
+            "path": str(child),
+            "has_project": (child / PROJECT_FILENAME).exists(),
+            "created_at": info.get("created_at", ""),
+            "files": info.get("files", []),
+        })
+    return items
+
+
+def get_project_snapshot(dir_name: str = None) -> dict:
+    """Return a read-only view of current or backup project plus available files."""
+    if not dir_name or dir_name == "current":
+        project_dir = CLIP_DIR
+    else:
+        project_dir = BACKUP_DIR / str(dir_name)
+    if not project_dir.is_dir():
+        raise FileNotFoundError(f"project directory not found: {project_dir}")
+    project = read_project(dir_name)
+    return {
+        "project": project,
+        "video_files": _list_media_files(project_dir, ".mp4"),
+        "audio_files": _list_media_files(project_dir, ".mp3"),
+    }
+
+
+async def load_project_directory(dir_name: str = None) -> dict:
+    """Restore a backup snapshot into the current clip directory.
+
+    The current directory is backed up first, then selected snapshot files are copied in.
+    """
+    if not dir_name or dir_name == "current":
+        project = read_project("current")
+        return {
+            "project": project,
+            "video_files": _list_media_files(CLIP_DIR, ".mp4"),
+            "audio_files": _list_media_files(CLIP_DIR, ".mp3"),
+        }
+
+    source_dir = BACKUP_DIR / str(dir_name)
+    if not source_dir.is_dir():
+        raise FileNotFoundError(f"backup directory not found: {source_dir}")
+
+    await _backup_entire_current_clip()
+    CLIP_DIR.mkdir(parents=True, exist_ok=True)
+    for src in source_dir.iterdir():
+        if src.is_file() and src.name != "backup_info.json":
+            await asyncio.to_thread(shutil.copy2, src, CLIP_DIR / src.name)
+
+    project = read_project("current")
+    return {
+        "project": project,
+        "video_files": _list_media_files(CLIP_DIR, ".mp4"),
+        "audio_files": _list_media_files(CLIP_DIR, ".mp3"),
+    }
+
 # Step 1: 话题 → 剧本
 # ══════════════════════════════════
 
@@ -122,9 +323,9 @@ def _build_narrations(script: dict) -> list[dict]:
 
 
 async def _synthesize_single(text: str, voice_id: str, idx: int) -> dict:
-    audio_dir = UPLOAD_DIR / "audio"
-    audio_dir.mkdir(exist_ok=True)
-    output_path = str(audio_dir / f"kepu_tts_{uuid.uuid4().hex}.mp3")
+    audio_dir = CLIP_DIR
+    audio_dir.mkdir(parents=True, exist_ok=True)
+    output_path = str(audio_dir / f"kepu_audio_{idx + 1:02d}.mp3")
 
     from .tts_service import generate_voice as tts_generate
     result_path = await tts_generate(text, voice_id, output_path)
@@ -145,8 +346,9 @@ async def _synthesize_single(text: str, voice_id: str, idx: int) -> dict:
 
 async def synthesize_tts(narrations: list[dict], voice_id: str = None) -> list[dict]:
     if not voice_id:
-        voice_id = await get_setting("tts_voice") or "longanhuan_v3.6"
+        voice_id = await get_setting("tts_voice") or "zh-CN-YunjianNeural"
 
+    await _backup_project_files(list(range(len(narrations))))
     tasks = [_synthesize_single(n["voice_script"], voice_id, i) for i, n in enumerate(narrations)]
     results = await asyncio.gather(*tasks)
     results.sort(key=lambda x: x["index"])
@@ -156,6 +358,16 @@ async def synthesize_tts(narrations: list[dict], voice_id: str = None) -> list[d
 # ══════════════════════════════════
 # Step 3: 旁白 + 时长 → 分镜提示词
 # ══════════════════════════════════
+
+async def synthesize_tts_single(text: str, voice_id: str = None, index: int = 0) -> dict:
+    """Regenerate a single narration audio file after backing up current files."""
+    if not text or not text.strip():
+        return {"index": index, "audio_path": "", "duration": 0, "text": text}
+    if not voice_id:
+        voice_id = await get_setting("tts_voice") or "zh-CN-YunjianNeural"
+    await _backup_project_files([index])
+    return await _synthesize_single(text, voice_id, index)
+
 
 async def generate_scenes(narrations: list[dict], durations: list[float]) -> list[dict]:
     prompt = _load_prompt("kepu_scene_prompt.txt")
@@ -183,6 +395,11 @@ async def generate_kepu_clips(
     """为每个分镜调用 AI 视频生成服务，返回 [{"video_path": ..., "prompt": ...}, ...]"""
     from .video_gen_service import generate_video_clip
     import time
+
+    indices_to_generate = [i for i, scene in enumerate(scenes) if scene.get("scene_prompt", "")]
+    backup_dir = await _backup_project_files(indices_to_generate)
+    if backup_dir:
+        print(f"[Kepu] Backed up old clips to {backup_dir}")
 
     clips = []
     for i, scene in enumerate(scenes):

@@ -3,7 +3,17 @@
 import os
 
 from fastapi import APIRouter, Body, Depends, HTTPException
-from ..services.kepu_service import synthesize_tts, generate_scenes, generate_full_script, split_full_script
+from ..services.kepu_service import (
+    synthesize_tts,
+    generate_scenes,
+    generate_full_script,
+    split_full_script,
+    save_project,
+    read_project,
+    list_project_directories,
+    get_project_snapshot,
+    load_project_directory,
+)
 from ..database import get_db
 from ..models.models import Media, MediaStatus
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,6 +78,22 @@ async def script_tts(data: dict = Body(...)):
         raise HTTPException(500, str(e))
 
 
+@router.post("/tts/single")
+async def script_tts_single(data: dict = Body(...)):
+    """Regenerate a single narration audio segment."""
+    text = data.get("text", "").strip()
+    voice_id = data.get("voice", None)
+    index = int(data.get("index", 0))
+    if not text:
+        raise HTTPException(400, "text 参数不能为空")
+    try:
+        from ..services.kepu_service import synthesize_tts_single
+        result = await synthesize_tts_single(text, voice_id, index)
+        return {"ok": True, "segment": result}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
 @router.post("/scenes")
 async def script_scenes(data: dict = Body(...)):
     """旁白 + TTS时长 → 分镜提示词"""
@@ -106,6 +132,51 @@ async def save_prompts(data: dict = Body(...)):
         p = prompt_dir / name
         p.write_text(text, encoding="utf-8")
     return {"status": "ok"}
+
+
+@router.get("/projects/directories")
+async def project_directories():
+    """List current workspace and backup snapshot directories."""
+    try:
+        return {"ok": True, "directories": list_project_directories()}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.get("/projects")
+async def get_project(dir: str = "current"):
+    """Read project manifest and available media files without changing current files."""
+    try:
+        data = get_project_snapshot(dir)
+        return {"ok": True, **data}
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/projects/save")
+async def save_current_project(data: dict = Body(...)):
+    """Save current Kepu project manifest into backend/uploads/clip/project.json."""
+    try:
+        project = data.get("project", data)
+        saved = save_project(project)
+        return {"ok": True, "project": saved}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/projects/load")
+async def load_project(data: dict = Body(...)):
+    """Backup current workspace, restore selected snapshot, and return its project state."""
+    dir_name = data.get("dir", "current")
+    try:
+        result = await load_project_directory(dir_name)
+        return {"ok": True, **result}
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 @router.post("/generate")
@@ -183,8 +254,9 @@ async def kepu_generate_single_clip(data: dict = Body(...)):
             filename = f"kepu_clip_{index + 1:02d}.mp4"
             if status == "done" and video_url:
                 try:
-                    from ..services.kepu_service import _download_remote_video
+                    from ..services.kepu_service import _download_remote_video, _backup_project_files
                     from ..config import UPLOAD_DIR
+                    await _backup_project_files([index])
                     local_path = await _download_remote_video(video_url, UPLOAD_DIR / "clip" / filename)
                 except Exception as exc:
                     print(f"[Kepu] Failed to save clip {index + 1}: {exc}")

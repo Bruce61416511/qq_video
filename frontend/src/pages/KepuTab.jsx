@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Card, Input, Button, InputNumber, Space, Tag, Alert, Progress, message, Steps, Typography, Tabs, Modal, Drawer, List , Divider } from 'antd'
-import { EditOutlined, PlusOutlined, ThunderboltOutlined, DeleteOutlined, AudioOutlined, PictureOutlined, ArrowLeftOutlined, CopyOutlined, VideoCameraOutlined, PlayCircleOutlined, DownloadOutlined, SettingOutlined, FileTextOutlined } from '@ant-design/icons'
+import { Card, Input, Button, InputNumber, Space, Tag, Alert, Progress, message, Steps, Typography, Tabs, Modal, Drawer, List, Divider, Select } from 'antd'
+import { EditOutlined, PlusOutlined, ThunderboltOutlined, DeleteOutlined, AudioOutlined, PictureOutlined, ArrowLeftOutlined, CopyOutlined, VideoCameraOutlined, PlayCircleOutlined, DownloadOutlined, SettingOutlined, FileTextOutlined, FolderOpenOutlined, SaveOutlined } from '@ant-design/icons'
 
 const { TextArea } = Input
 const { Text, Title } = Typography
@@ -42,6 +42,10 @@ export default function KepuTab() {
   const [editingFile, setEditingFile] = useState(null)
   const [editingContent, setEditingContent] = useState("")
   const [savingConfig, setSavingConfig] = useState(false)
+  const [projectDirs, setProjectDirs] = useState([])
+  const [selectedProjectDir, setSelectedProjectDir] = useState("current")
+  const [projectLoading, setProjectLoading] = useState(false)
+  const [regeneratingAudioIdx, setRegeneratingAudioIdx] = useState(-1)
 
   // maxStep 从数据自动推导：完成到哪个步骤
   const maxStep = composeResult ? 5 : clips.length > 0 ? 4 : scenes.length > 0 ? 3 : ttsResults.length > 0 ? 2 : narrations.length > 0 ? 1 : 0
@@ -95,6 +99,133 @@ export default function KepuTab() {
   // 总时长由实际旁白字数决定（约 4 字/秒），而非镜头数×15
   const totalCharsOf = (list) => (list || []).reduce((s, n) => s + (n.voice_script || "").length, 0)
 
+  const projectPayloadFrom = (n = narrations, t = ttsResults, s = scenes) => ({
+    topic: topic || "",
+    size: "9:16",
+    resolution: "1080P",
+    voice_id: "zh-CN-YunjianNeural",
+    shots: (n || []).map((nar, i) => ({
+      index: i,
+      stage: nar?.stage || "body",
+      voice_script: nar?.voice_script || "",
+      scene_prompt: s?.[i]?.scene_prompt || "",
+      duration: Number(t?.[i]?.duration || 0),
+      video: `kepu_clip_${String(i + 1).padStart(2, "0")}.mp4`,
+      audio: `kepu_audio_${String(i + 1).padStart(2, "0")}.mp3`,
+    })),
+  })
+
+  const saveProjectToBackend = async (payload) => {
+    const body = payload || projectPayloadFrom()
+    const res = await fetch("http://localhost:8000/api/kepu/projects/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project: body }),
+    })
+    const data = await res.json()
+    if (!res.ok || !data.ok) throw new Error(data.detail || "保存项目失败")
+    return data
+  }
+
+  const saveProjectQuietly = async (payload) => {
+    try {
+      await saveProjectToBackend(payload)
+      await fetchProjectDirs()
+    } catch (e) {
+      console.error("save project failed", e)
+    }
+  }
+
+  const fetchProjectDirs = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/kepu/projects/directories")
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.detail || "加载项目目录失败")
+      const dirs = data.directories || []
+      setProjectDirs(dirs)
+      if (!dirs.some(d => d.key === selectedProjectDir)) setSelectedProjectDir("current")
+    } catch (e) {
+      console.error("fetch project dirs failed", e)
+    }
+  }
+
+  const applyProjectData = (data) => {
+    const project = data.project || {}
+    const shots = Array.isArray(project.shots) ? project.shots : []
+    const videoFiles = new Set(data.video_files || [])
+    const audioFiles = new Set(data.audio_files || [])
+
+    setTopic(project.topic || "")
+    setFullScript(shots.map(s => s.voice_script || "").filter(Boolean).join("\n\n"))
+    const nars = shots.map(s => ({
+      voice_script: s.voice_script || "",
+      stage: s.stage || "body",
+      index: Number(s.index ?? 0),
+    }))
+    setNarrations(nars)
+
+    const nextTts = shots.map(s => ({
+      index: Number(s.index ?? 0),
+      audio_path: s.audio && audioFiles.has(s.audio) ? `/uploads/clip/${s.audio}` : "",
+      duration: Number(s.duration || 0),
+      text: s.voice_script || "",
+    }))
+    setTtsResults(nextTts)
+
+    setScenes(shots.map(s => ({ scene_prompt: s.scene_prompt || "", stage: s.stage || "body" })))
+
+    const nextClips = shots.map(s => {
+      const hasVideo = Boolean(s.video && videoFiles.has(s.video))
+      return {
+        video_path: hasVideo ? `http://localhost:8000/uploads/clip/${s.video}` : "",
+        prompt: s.scene_prompt || "",
+        status: hasVideo ? "done" : "error",
+        error: hasVideo ? "" : "视频不存在",
+      }
+    })
+    setClips(nextClips)
+    setComposeResult(null)
+    setTotalDuration(Math.max(15, Math.ceil(nars.reduce((sum, n) => sum + (n.voice_script || "").length, 0) / 4)))
+
+    const hasVideo = shots.some(s => s.video && videoFiles.has(s.video))
+    const hasScene = shots.some(s => (s.scene_prompt || "").trim())
+    const hasAudio = shots.some(s => s.audio && audioFiles.has(s.audio))
+    setCurrent(hasVideo ? 4 : hasScene ? 3 : hasAudio ? 2 : shots.length ? 1 : 0)
+    message.success("项目已加载")
+  }
+
+  const handleLoadProject = async () => {
+    if (!selectedProjectDir) return
+    setProjectLoading(true)
+    try {
+      const res = await fetch("http://localhost:8000/api/kepu/projects/load", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dir: selectedProjectDir }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.detail || "载入项目失败")
+      applyProjectData(data)
+      await fetchProjectDirs()
+    } catch (e) {
+      message.error("载入项目失败: " + e.message)
+    } finally {
+      setProjectLoading(false)
+    }
+  }
+
+  const handleSaveCurrentProject = async () => {
+    try {
+      await saveProjectToBackend(projectPayloadFrom())
+      await fetchProjectDirs()
+      message.success("当前项目已保存")
+    } catch (e) {
+      message.error("保存项目失败: " + e.message)
+    }
+  }
+
+  useEffect(() => { fetchProjectDirs() }, [])
+
   const handleGenerateFullScript = async () => {
     if (!topic.trim()) { message.warning("请输入话题"); return }
     setLoading(true)
@@ -137,6 +268,7 @@ export default function KepuTab() {
       // 总时长由实际旁白字数决定（约4字/秒），而非镜头数×15
       setTotalDuration(Math.max(15, Math.ceil(totalCharsOf(nars) / 4)))
       setCurrent(1)
+      await saveProjectQuietly(projectPayloadFrom(nars, [], []))
       message.success(`分镜拆分完成，共 ${nars.length} 个镜头`)
     } catch (e) {
       message.error("拆分失败: " + e.message)
@@ -173,7 +305,21 @@ export default function KepuTab() {
   const handleEdit = (i) => { setEditingIndex(i); setEditText(narrations[i]?.voice_script || "") }
   const handleSaveEdit = (i) => {
     const u = [...narrations]; u[i] = { ...u[i], voice_script: editText }; setNarrations(u); setEditingIndex(-1)
+    saveProjectQuietly(projectPayloadFrom(u, ttsResults, scenes))
   }
+  const handleEditScene = (i) => {
+    setEditingSceneIdx(i)
+    setEditSceneText(scenes[i]?.scene_prompt || "")
+  }
+
+  const handleSaveScene = (i) => {
+    const u = [...scenes]
+    u[i] = { ...u[i], scene_prompt: editSceneText }
+    setScenes(u)
+    setEditingSceneIdx(-1)
+    saveProjectQuietly(projectPayloadFrom(narrations, ttsResults, u))
+  }
+
   const handleDelete = (i) => {
     const nar = narrations[i]
     if (nar.stage === "hook" || nar.stage === "ending") { message.warning("钩子和结尾不能删除"); return }
@@ -196,6 +342,7 @@ export default function KepuTab() {
     const valid = narrations.filter(n => n.voice_script.trim())
     if (!valid.length) { message.warning("无旁白内容"); return }
     setLoading(true); setLoadingStep("正在合成语音...")
+    await saveProjectQuietly(projectPayloadFrom(narrations, ttsResults, scenes))
     try {
       const res = await fetch("http://localhost:8000/api/kepu/tts", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -204,6 +351,7 @@ export default function KepuTab() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || "失败")
       setTtsResults(data.segments)
+      await saveProjectQuietly(projectPayloadFrom(narrations, data.segments, scenes))
       setCurrent(2)
       const failedCount = (data.segments || []).filter(s => !s.audio_path).length
       if (failedCount > 0) {
@@ -214,6 +362,30 @@ export default function KepuTab() {
     } catch (e) {
       message.error("失败: " + e.message)
     } finally { setLoading(false) }
+  }
+
+  const handleRegenerateAudio = async (i) => {
+    const nar = narrations[i]
+    if (!nar?.voice_script?.trim()) { message.warning("无旁白内容"); return }
+    setRegeneratingAudioIdx(i)
+    try {
+      const res = await fetch("http://localhost:8000/api/kepu/tts/single", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: nar.voice_script, index: i }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.detail || "音频生成失败")
+      const u = [...ttsResults]
+      u[i] = { ...u[i], ...data.segment }
+      setTtsResults(u)
+      await saveProjectQuietly(projectPayloadFrom(narrations, u, scenes))
+      message.success("分镜 " + (i + 1) + " 音频已重新生成")
+    } catch (e) {
+      message.error("音频生成失败: " + e.message)
+    } finally {
+      setRegeneratingAudioIdx(-1)
+    }
   }
 
   const handleGenerateScenes = async () => {
@@ -230,6 +402,7 @@ export default function KepuTab() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || "失败")
       setScenes(data.scenes)
+      await saveProjectQuietly(projectPayloadFrom(narrations, ttsResults, data.scenes))
       setCurrent(3)
       message.success("分镜提示词生成成功")
     } catch (e) {
@@ -252,6 +425,11 @@ export default function KepuTab() {
       setScenes(updatedScenes)
     }
     setClipEditIdx(-1)
+    const scenesForSave = [...scenes]
+    if (promptToUse !== scene?.scene_prompt) {
+      scenesForSave[sceneIdx] = { ...scenesForSave[sceneIdx], scene_prompt: promptToUse }
+    }
+    await saveProjectQuietly(projectPayloadFrom(narrations, ttsResults, scenesForSave))
     try {
       const res = await fetch("http://localhost:8000/api/kepu/clip/generate", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -268,6 +446,7 @@ export default function KepuTab() {
         error: clip.status !== "done" ? (clip.message || "生成失败") : "",
       }
       setClips(newClips)
+      await saveProjectQuietly(projectPayloadFrom(narrations, ttsResults, scenesForSave))
       message.success("分镜 " + (sceneIdx + 1) + " 生成完成")
     } catch (e) {
       const newClips = [...clips]
@@ -354,6 +533,96 @@ export default function KepuTab() {
     { key: "scene", filename: "kepu_scene_prompt.txt", description: "分镜画面提示词" },
   ]
 
+  const renderModifyShot = (i) => {
+    const nar = narrations[i] || {}
+    const tts = ttsResults[i] || {}
+    const scene = scenes[i] || {}
+    const clip = clips[i] || { status: "pending", video_path: "", error: "" }
+    const isAudioRegen = regeneratingAudioIdx === i
+    const isVideoGen = clip.status === "generating"
+    const audioSrc = tts.audio_path
+      ? (tts.audio_path.startsWith("http://") || tts.audio_path.startsWith("https://")
+        ? tts.audio_path
+        : "http://localhost:8000" + tts.audio_path)
+      : ""
+    const stageMap = { hook: "钩子", body: "正文", ending: "结尾", evidence: "论据", scene: "场景", cta: "行动号召" }
+    const stageLabel = nar.stage && stageMap[nar.stage] ? ` · ${stageMap[nar.stage]}` : ""
+    return (
+      <Card key={i} size="small" title={`分镜 ${i + 1}${stageLabel}`} style={{ marginBottom: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <Text strong>旁白</Text>
+              {editingIndex === i ? (
+                <Button size="small" type="primary" onClick={() => handleSaveEdit(i)}>保存</Button>
+              ) : (
+                <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(i)}>编辑</Button>
+              )}
+            </div>
+            {editingIndex === i ? (
+              <TextArea value={editText} onChange={e => setEditText(e.target.value)} rows={4} style={{ marginTop: 8 }} />
+            ) : (
+              <div style={{ whiteSpace: "pre-wrap", marginTop: 8, color: nar.voice_script ? "rgba(0,0,0,0.85)" : "#8c8c8c" }}>
+                {nar.voice_script || "暂无旁白"}
+              </div>
+            )}
+            {audioSrc ? (
+              <audio controls style={{ width: "100%", marginTop: 8, height: 32 }} src={audioSrc} />
+            ) : (
+              <Alert type="warning" message="暂无音频" style={{ marginTop: 8 }} />
+            )}
+            <Button
+              size="small"
+              icon={<AudioOutlined />}
+              loading={isAudioRegen}
+              disabled={!nar.voice_script?.trim()}
+              onClick={() => handleRegenerateAudio(i)}
+              style={{ marginTop: 8 }}
+            >
+              重新生成音频
+            </Button>
+          </div>
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <Text strong>分镜提示词</Text>
+              {editingSceneIdx === i ? (
+                <Button size="small" type="primary" onClick={() => handleSaveScene(i)}>保存</Button>
+              ) : (
+                <Button size="small" icon={<EditOutlined />} onClick={() => handleEditScene(i)}>编辑</Button>
+              )}
+            </div>
+            {editingSceneIdx === i ? (
+              <TextArea value={editSceneText} onChange={e => setEditSceneText(e.target.value)} rows={5} style={{ marginTop: 8 }} />
+            ) : (
+              <div style={{ whiteSpace: "pre-wrap", marginTop: 8, color: scene.scene_prompt ? "rgba(0,0,0,0.85)" : "#8c8c8c" }}>
+                {scene.scene_prompt || "暂无分镜提示词"}
+              </div>
+            )}
+            {clip.video_path ? (
+              <video controls style={{ width: "100%", maxHeight: 220, borderRadius: 8, background: "#000", marginTop: 8 }} src={clip.video_path} />
+            ) : (
+              <Alert type="warning" message={clip.error || "暂无视频"} style={{ marginTop: 8 }} />
+            )}
+            <Button
+              size="small"
+              type="primary"
+              icon={<VideoCameraOutlined />}
+              loading={isVideoGen}
+              disabled={isVideoGen || !scene.scene_prompt?.trim()}
+              onClick={() => handleGenerateSingleClip(i)}
+              style={{ marginTop: 8 }}
+            >
+              重新生成视频
+            </Button>
+            {clip.error && clip.status !== "generating" ? (
+              <div style={{ color: "#cf1322", marginTop: 8 }}>{clip.error}</div>
+            ) : null}
+          </div>
+        </div>
+      </Card>
+    )
+  }
+
   const tabItems = [
     {
       key: "studio",
@@ -362,7 +631,7 @@ export default function KepuTab() {
         <div style={{ maxWidth: 900 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
             <Title level={3} style={{ margin: 0 }}>科普创作</Title>
-            <Space>
+            <Space wrap>
               <Button size="small" danger onClick={handleReset}>清除全部</Button>
             </Space>
           </div>
@@ -627,6 +896,44 @@ export default function KepuTab() {
               )}
             />
           </Card>
+        </div>
+      ),
+    },
+    {
+      key: "modify",
+      label: "修改创作",
+      icon: <EditOutlined />,
+      children: (
+        <div style={{ maxWidth: 1100 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+            <Title level={3} style={{ margin: 0 }}>修改创作</Title>
+            <Space wrap>
+              <Select
+                size="middle"
+                style={{ width: 240 }}
+                value={selectedProjectDir}
+                onChange={setSelectedProjectDir}
+                options={(projectDirs || []).map(d => ({ value: d.key, label: d.label }))}
+                placeholder="选择要导入的项目目录"
+              />
+              <Button type="primary" icon={<FolderOpenOutlined />} loading={projectLoading} onClick={handleLoadProject}>导入</Button>
+            </Space>
+          </div>
+          {narrations.length === 0 ? (
+            <Alert
+              type="info"
+              showIcon
+              message="请先选择项目目录并点击导入"
+              description="导入后会展示每个分镜的旁白、音频、分镜提示词和视频，并支持单独编辑或重新生成。"
+            />
+          ) : (
+            <>
+              <div style={{ marginBottom: 12 }}>
+                <Text type="secondary">当前导入目录：{selectedProjectDir} · 共 {narrations.length} 个分镜</Text>
+              </div>
+              {narrations.map((_, i) => renderModifyShot(i))}
+            </>
+          )}
         </div>
       ),
     },

@@ -85,7 +85,7 @@ def _generate_ass(clips: list[dict], durations: list[tuple] = None):
                     seg_ratio = len(seg) / total_chars
                     seg_dur = audio_dur * seg_ratio
                     # Stop if we exceed the clip's video duration
-                    if shot_time + seg_dur > clip_dur:
+                    if shot_time + seg_dur > clip_dur + 0.05:
                         break
                     start = _ass_time(clip_start + shot_time + subtitle_delay)
                     end = _ass_time(clip_start + shot_time + seg_dur + subtitle_delay)
@@ -99,32 +99,72 @@ def _generate_ass(clips: list[dict], durations: list[tuple] = None):
 
 
 def _split_by_chars(text: str, chars_per_line: int) -> list[str]:
-    """Split text into fixed-length chunks, trying to break at natural boundaries.
-    Priority: Chinese punctuation > space > hard cut.
+    """Split text into fixed-length chunks without breaking common words or units.
+    Priority: Chinese punctuation > space > unbreakable token boundary > hard cut.
     """
     if len(text) <= chars_per_line:
         return [text]
-    result = []
-    remaining = text
+
     delimiters = "，。！？；、："
-    while remaining:
-        if len(remaining) <= chars_per_line:
-            result.append(remaining)
-            break
-        chunk = remaining[:chars_per_line]
-        # Look for Chinese punctuation near the end of the chunk
-        best = -1
-        for d in delimiters:
-            pos = chunk.rfind(d)
-            if pos > best:
-                best = pos
-        if best > chars_per_line // 2:
-            result.append(remaining[:best + 1])
-            remaining = remaining[best + 1:]
+    unbreakable_terms = sorted({
+        "氨基酸态氮", "非转基因", "完整大豆", "高盐稀态", "配料表",
+        "脱脂豆粕", "焦糖色", "增稠剂", "增鲜剂", "核苷酸",
+        "米曲霉", "酵母菌", "蛋白酶", "酯类", "醇类", "回甘",
+        "日晒夜露", "猪油拌饭", "微生物", "添加剂", "流水线",
+        "传统酱油", "速成酱油", "工业酱油", "酱油", "猪油", "拌饭",
+        "大豆蛋白", "蛋白质", "小麦粉", "大豆", "小麦", "黄豆", "盐", "水",
+        "舌头", "厨房", "酿造", "发酵", "真正发酵", "真发酵",
+        "酱香", "开缸", "鲜味", "香气", "糖分", "时间", "原料",
+        "高温催化", "味精", "颜色", "咸鲜", "广告", "指标", "工艺",
+        "注水", "化学配方", "捷径", "关注", "市面上", "开刀", "智商税",
+    }, key=len, reverse=True)
+
+    tokens = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch in delimiters:
+            if tokens and not tokens[-1].endswith(tuple(delimiters)):
+                tokens[-1] += ch
+            else:
+                tokens.append(ch)
+            i += 1
+            continue
+        if ch.isspace():
+            i += 1
+            continue
+        if ch.isascii():
+            j = i + 1
+            while j < len(text) and text[j].isascii() and not text[j].isspace():
+                j += 1
+            tokens.append(text[i:j])
+            i = j
+            continue
+        matched = False
+        for term in unbreakable_terms:
+            if text.startswith(term, i):
+                tokens.append(term)
+                i += len(term)
+                matched = True
+                break
+        if not matched:
+            tokens.append(ch)
+            i += 1
+
+    result = []
+    line = ""
+    for token in tokens:
+        if not line:
+            line = token
+        elif len(line) + len(token) <= chars_per_line:
+            line += token
         else:
-            result.append(chunk)
-            remaining = remaining[chars_per_line:]
+            result.append(line)
+            line = token
+    if line:
+        result.append(line)
     return result
+
 def _ass_time(seconds: float) -> str:
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)
@@ -184,7 +224,8 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
         return {"ok": False, "error": "没有有效视频片段"}
     try:
         # Pre-probe all durations once (video + audio per clip)
-        probed_durations = []
+        probed_durations = []   # (effective_duration, audio_duration)
+        video_extend_by = []    # seconds to freeze/extend each video to match audio
         for i, c in enumerate(valid_clips):
             vpath = c.get("video_path", "")
             if vpath.startswith(("http://", "https://")):
@@ -194,11 +235,15 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
                 if vdur <= 0:
                     vdur = float(c.get("duration", 5))
             adur = _probe_duration(c.get("audio_path", ""))
-            probed_durations.append((vdur, adur))
-            # Warn if audio significantly exceeds video (will be truncated)
+            effective_dur = max(vdur, adur)
+            extend_by = max(0.0, adur - vdur)
+            probed_durations.append((effective_dur, adur))
+            video_extend_by.append(extend_by)
+            # Warn if audio exceeds video; video will be extended to keep full audio
             if adur > 0 and vdur > 0 and adur > vdur * 1.2:
                 overflow_pct = int((adur - vdur) / vdur * 100)
-                print(f"[Composer] WARNING: shot {i+1} audio ({adur:.1f}s) exceeds video ({vdur:.1f}s) by {overflow_pct}% -> audio will be truncated")
+                print(f"[Composer] INFO: shot {i+1} audio ({adur:.1f}s) exceeds video ({vdur:.1f}s) by {overflow_pct}% -> video will be extended")
+
         ass_file = _generate_ass(valid_clips, probed_durations)
         cmd = ["ffmpeg", "-y"]
         filter_parts = []
@@ -209,19 +254,30 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
             vi = len([x for x in cmd if x == "-i"])
             cmd.extend(["-i", c["video_path"]])
             v_indices.append(vi)
+            clip_dur = probed_durations[i][0]
+            extend_by = video_extend_by[i]
             vf = f"[{vi}:v]{scale},noise=alls=7:allf=t+u,setsar=1"
+            if extend_by > 0.01:
+                vf += f",tpad=stop_mode=clone:stop_duration={extend_by:.3f}:start_duration=0"
             filter_parts.append(f"{vf}[v{vi}]")
             audio_path = c.get("audio_path", "")
-            clip_dur = probed_durations[i][0]
             if audio_path and os.path.exists(audio_path):
                 ai = len([x for x in cmd if x == "-i"])
                 cmd.extend(["-i", audio_path])
-                filter_parts.append(f"[{ai}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,apad=whole_dur={clip_dur}[a_pad_{i}]")
+                filter_parts.append(f"[{ai}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,atrim=0:{clip_dur:.3f},apad=whole_dur={clip_dur:.3f}[a_pad_{i}]")
                 a_labels.append(f"[a_pad_{i}]")
             else:
-                filter_parts.append(f"anullsrc=r=44100:cl=stereo:d={clip_dur}[a_pad_{i}]")
+                filter_parts.append(f"anullsrc=r=44100:cl=stereo:d={clip_dur:.3f}[a_pad_{i}]")
                 a_labels.append(f"[a_pad_{i}]")
         n = len(v_indices)
+        video_natural_duration = sum(d[0] for d in probed_durations)
+        if n > 1:
+            video_natural_duration -= 0.3 * (n - 1)
+        audio_total_duration = sum(d[1] for d in probed_durations)
+        target_duration = max(video_natural_duration, audio_total_duration)
+        video_tail_pad = max(0.0, target_duration - video_natural_duration)
+        audio_tail_pad = max(0.0, target_duration - audio_total_duration)
+
         # Use xfade for smooth transitions between clips
         if n > 1:
             # Build xfade chain: clip0 -> fade to clip1 -> fade to clip2 -> ...
@@ -234,18 +290,27 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
                     prev = cur
                     cum_dur += probed_durations[idx][0]
                     continue
-                clip_dur = probed_durations[idx-1][0]
                 offset = cum_dur - 0.3  # start fade 0.3s before end of prev clip
                 xfade_label = f"xfade{idx}"
                 filter_parts.append(f"{prev}{cur}xfade=transition=fade:duration=0.3:offset={offset:.1f}[{xfade_label}]")
                 prev = f"[{xfade_label}]"
                 cum_dur += probed_durations[idx][0] - 0.3  # account for overlap
-            filter_parts.append(f"{prev}format=yuv420p[vout]")
+            video_chain = prev
+            if video_tail_pad > 0.01:
+                video_chain += f"tpad=stop_mode=clone:stop_duration={video_tail_pad:.3f}:start_duration=0,"
+            filter_parts.append(f"{video_chain}format=yuv420p[vout]")
         else:
             v_concat = f"[v{v_indices[0]}]"
-            filter_parts.append(f"{v_concat}concat=n=1:v=1:a=0[vout]")
+            if video_tail_pad > 0.01:
+                v_concat += f"tpad=stop_mode=clone:stop_duration={video_tail_pad:.3f}:start_duration=0,"
+            filter_parts.append(f"{v_concat}format=yuv420p[vout]")
+
         a_concat = "".join(a_labels)
         filter_parts.append(f"{a_concat}concat=n={n}:v=0:a=1[aout]")
+        audio_out_label = "[aout]"
+        if audio_tail_pad > 0.01:
+            filter_parts.append(f"[aout]apad=whole_dur={target_duration:.3f}[aout_padded]")
+            audio_out_label = "[aout_padded]"
         if ass_file:
             ass_path_fixed = ass_file.replace("\\", "/")
             ass_escaped = ass_path_fixed.replace(":", "\\:")
@@ -254,7 +319,7 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
         else:
             video_out = "[vout]"
         cmd.extend(["-filter_complex", ";".join(filter_parts)])
-        cmd.extend(["-map", video_out, "-map", "[aout]"])
+        cmd.extend(["-map", video_out, "-map", audio_out_label])
         cmd.extend(["-c:v", "libx264", "-preset", "fast", "-crf", "23"])
         cmd.extend(["-c:a", "aac", "-b:a", "128k"])
         cmd.extend(["-movflags", "+faststart", output_path])
