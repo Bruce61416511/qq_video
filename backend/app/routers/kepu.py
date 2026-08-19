@@ -177,11 +177,24 @@ async def kepu_generate_single_clip(data: dict = Body(...)):
         dur_str = str(max(5, min(15, int(duration))))
         result = await generate_video_clip(prompt, duration=dur_str, size=size, resolution=resolution)
         if isinstance(result, dict):
+            video_url = result.get("url", "")
+            status = result.get("status", "error")
+            local_path = ""
+            filename = f"kepu_clip_{index + 1:02d}.mp4"
+            if status == "done" and video_url:
+                try:
+                    from ..services.kepu_service import _download_remote_video
+                    from ..config import UPLOAD_DIR
+                    local_path = await _download_remote_video(video_url, UPLOAD_DIR / "clip" / filename)
+                except Exception as exc:
+                    print(f"[Kepu] Failed to save clip {index + 1}: {exc}")
+                    status = "download_error"
             return {"ok": True, "clip": {
                 "index": index,
-                "video_path": result.get("url", ""),
+                "video_path": (f"http://localhost:8000/uploads/clip/{filename}" if local_path else video_url),
+                "local_path": local_path,
                 "prompt": prompt,
-                "status": result.get("status", "error"),
+                "status": status,
                 "message": result.get("message", ""),
             }}
         else:
@@ -216,7 +229,12 @@ async def kepu_compose(data: dict = Body(...), db: AsyncSession = Depends(get_db
                 if full_audio.exists():
                     rc["audio_path"] = str(full_audio)
             video_url = c.get("video_path", "")
-            if video_url and not video_url.startswith(("http://", "https://")) and not Path(video_url).exists():
+            if video_url.startswith("/uploads/"):
+                full_video = UPLOAD_DIR.parent / video_url.lstrip("/")
+                if full_video.exists():
+                    rc["video_path"] = str(full_video)
+            video_path = rc.get("video_path", "")
+            if video_path and not video_path.startswith(("http://", "https://")) and not os.path.exists(video_path):
                 rc["video_path"] = ""  # skip invalid local paths
             resolved_clips.append(rc)
 

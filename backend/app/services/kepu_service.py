@@ -8,6 +8,8 @@ import re
 import uuid
 import asyncio
 import subprocess
+import os
+import httpx
 from pathlib import Path
 from openai import AsyncOpenAI
 
@@ -70,6 +72,18 @@ def _probe_duration(file_path: str) -> float:
 
 
 # ══════════════════════════════════
+
+async def _download_remote_video(url: str, output_path: Path) -> str:
+    """Download a remote video URL to local storage. Returns local absolute path."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
+        async with client.stream("GET", url) as resp:
+            resp.raise_for_status()
+            with open(output_path, "wb") as f:
+                async for chunk in resp.aiter_bytes():
+                    f.write(chunk)
+    return str(output_path)
+
 # Step 1: 话题 → 剧本
 # ══════════════════════════════════
 
@@ -182,11 +196,23 @@ async def generate_kepu_clips(
         print(f"[Kepu] Generating clip {i+1}/{len(scenes)}, duration={dur_str}s")
         result = await generate_video_clip(prompt, duration=dur_str, size=size, resolution=resolution)
         if isinstance(result, dict):
+            video_url = result.get("url", "")
+            status = result.get("status", "error")
+            local_path = ""
+            if status == "done" and video_url:
+                filename = f"kepu_clip_{i + 1:02d}.mp4"
+                try:
+                    local_path = await _download_remote_video(video_url, UPLOAD_DIR / "clip" / filename)
+                    print(f"[Kepu] Saved clip {i + 1} to {local_path}")
+                except Exception as exc:
+                    print(f"[Kepu] Failed to save clip {i + 1}: {exc}")
+                    status = "download_error"
             clips.append({
                 "index": i,
-                "video_path": result.get("url", ""),
+                "video_path": (f"http://localhost:8000/uploads/clip/{filename}" if local_path else video_url),
+                "local_path": local_path,
                 "prompt": prompt,
-                "status": result.get("status", "error"),
+                "status": status,
                 "message": result.get("message", ""),
             })
         else:
@@ -246,7 +272,7 @@ async def run_kepu_pipeline(
                 audio_path = str(full_audio)
         clip_info = clips[i] if i < len(clips) else {}
         composed_clips.append({
-            "video_path": clip_info.get("video_path", ""),
+            "video_path": (clip_info.get("local_path") or clip_info.get("video_path", "")),
             "audio_path": audio_path,
             "subtitle": narrations[i].get("voice_script", ""),
             "duration": durations[i] if i < len(durations) else 5,

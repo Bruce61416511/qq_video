@@ -30,6 +30,13 @@ const TTS_MODEL_OPTIONS = [
   { value: 'cosyvoice-v3-flash', label: 'cosyvoice-v3-flash (龙飞)' },
 ]
 
+function getTTSModelOptions(service) {
+  if (service === 'edge_tts') {
+    return [{ value: 'edge_tts', label: 'Edge TTS 默认' }]
+  }
+  return TTS_MODEL_OPTIONS
+}
+
 const TTS_VOICE_OPTIONS_BY_MODEL = {
   'qwen-audio-3.0-tts-flash': [
     { value: 'longanhuan_v3.6', label: '龙安欢 v3.6 (温柔女声)' },
@@ -49,7 +56,14 @@ const TTS_VOICE_OPTIONS_BY_MODEL = {
   ],
 }
 
-function getTTSVoiceOptions(model) {
+const EDGE_TTS_VOICE_OPTIONS = [
+  { value: 'zh-CN-YunjianNeural', label: '云健 Yunjian (纪录片/访谈男声)' },
+  { value: 'zh-CN-YunyangNeural', label: '云扬 Yunyang (新闻/成熟男声)' },
+  { value: 'zh-CN-YunxiNeural', label: '云希 Yunxi (温暖男声)' },
+]
+
+function getTTSVoiceOptions(model, service) {
+  if (service === 'edge_tts') return EDGE_TTS_VOICE_OPTIONS
   return TTS_VOICE_OPTIONS_BY_MODEL[model] || TTS_VOICE_OPTIONS_BY_MODEL['qwen-audio-3.0-tts-flash']
 }
 const LLM_MODEL_BY_SERVICE = {
@@ -157,7 +171,7 @@ function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, service
             onChange={v => setConfig(prev => ({ ...prev, [serviceKey.replace('_service', '_model')]: { ...prev[serviceKey.replace('_service', '_model')], value: v } }))}
             options={
               title === 'LLM 分镜策划' ? getLLMModelOptions(config[serviceKey]?.value) :
-              title === 'TTS 语音合成' ? TTS_MODEL_OPTIONS :
+              title === 'TTS 语音合成' ? getTTSModelOptions(config[serviceKey]?.value) :
               getVideoModelOptions(config[serviceKey]?.value)
             }
           />
@@ -172,7 +186,7 @@ function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, service
             value={config['tts_voice']?.value || undefined}
             placeholder="选择音色"
             onChange={v => setConfig(prev => ({ ...prev, tts_voice: { ...prev['tts_voice'], value: v } }))}
-            options={getTTSVoiceOptions(config['tts_model']?.value)}
+            options={getTTSVoiceOptions(config['tts_model']?.value, config[serviceKey]?.value)}
           />
         </div>
       )}

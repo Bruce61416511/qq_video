@@ -12,6 +12,16 @@ from pathlib import Path
 from ..config import get_setting, UPLOAD_DIR
 
 
+DEFAULT_EDGE_VOICE = "zh-CN-YunjianNeural"
+
+
+def _is_edge_voice(voice: str) -> bool:
+    """Return True for Edge/Azure neural voice names like zh-CN-YunjianNeural."""
+    if not voice:
+        return False
+    return voice.lower().startswith(("zh-", "en-", "ja-", "ko-", "de-", "fr-", "es-", "it-", "pt-", "ru-"))
+
+
 async def generate_voice(text: str, voice_id: str = None, output_path: str = None) -> str:
     """Generate voice audio from text. Returns file path to .mp3 or .wav.
 
@@ -31,8 +41,12 @@ async def generate_voice(text: str, voice_id: str = None, output_path: str = Non
         output_path = str(output_dir / f"tts_{uuid.uuid4().hex}.mp3")
 
     # Edge TTS is free and works without key
-    if not service or service == "edge_tts" or (service == "edge_tts" and not api_key):
-        return await _edge_tts(text, output_path, voice_id)
+    if not service or service == "edge_tts":
+        edge_voice = voice_id
+        if not _is_edge_voice(edge_voice):
+            configured_voice = await get_setting("tts_voice")
+            edge_voice = configured_voice if _is_edge_voice(configured_voice) else DEFAULT_EDGE_VOICE
+        return await _edge_tts(text, output_path, edge_voice)
 
     if service == "bailian_tts":
         model = await get_setting("tts_model") or "qwen-audio-3.0-tts-flash"
@@ -51,7 +65,7 @@ async def generate_voice(text: str, voice_id: str = None, output_path: str = Non
 
 async def _edge_tts(text: str, output_path: str, voice_id: str = None) -> str:
     """Edge TTS - free, good quality Chinese voices."""
-    voice = voice_id or "zh-CN-XiaoxiaoNeural"  # warm female voice
+    voice = voice_id or DEFAULT_EDGE_VOICE
     try:
         # Use edge-tts CLI - try full path first
         edge_exe = "edge-tts"

@@ -299,7 +299,7 @@ export default function KepuTab() {
       const tts = ttsResults[i] || {}
       const nar = narrations[i] || {}
       return {
-        video_path: clip.video_path || "",
+        video_path: `/uploads/clip/kepu_clip_${String(i + 1).padStart(2, "0")}.mp4`,
         audio_path: tts.audio_path || "",
         subtitle: nar.voice_script || "",
         duration: tts.duration || 5,
