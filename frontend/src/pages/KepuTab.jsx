@@ -527,6 +527,7 @@ export default function KepuTab() {
       if (!res.ok || !data.ok) throw new Error(data.error || data.detail || "合成失败")
       setComposeResult(data)
       setCurrent(5)
+      setActiveTab("studio")
       message.success("视频合成完成")
     } catch (e) {
       message.error("合成失败: " + e.message)
@@ -950,6 +951,7 @@ export default function KepuTab() {
                 placeholder="选择要导入的项目目录"
               />
               <Button type="primary" icon={<FolderOpenOutlined />} loading={projectLoading} onClick={handleLoadProject}>导入</Button>
+              <Button type="primary" icon={<PlayCircleOutlined />} loading={composeLoading} onClick={handleCompose} disabled={!clips.length}>合成最终视频</Button>
             </Space>
           </div>
           {narrations.length === 0 ? (
