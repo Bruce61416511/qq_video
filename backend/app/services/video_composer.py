@@ -77,7 +77,7 @@ def _generate_ass(clips: list[dict], durations: list[tuple] = None):
         clip_start = cumulative
         shot_time = 0.0  # local time within this shot
         if sub_text:
-            segments = _split_by_chars(sub_text, chars_per_line)
+            segments = _split_by_chars_smart(sub_text, chars_per_line)
             total_chars = sum(len(s) for s in segments)
             if total_chars > 0 and audio_dur > 0:
                 for seg in segments:
@@ -92,6 +92,8 @@ def _generate_ass(clips: list[dict], durations: list[tuple] = None):
                     lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{seg}")
                     shot_time += seg_dur
         cumulative = clip_start + clip_dur
+        if i < len(clips) - 1:
+            cumulative -= 0.3
 
     with open(ass_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
@@ -164,6 +166,89 @@ def _split_by_chars(text: str, chars_per_line: int) -> list[str]:
     if line:
         result.append(line)
     return result
+
+def _split_by_chars_smart(text: str, chars_per_line: int = 12) -> list[str]:
+    """按标点和词边界切字幕，避免把词语从中间切断。"""
+    if not text:
+        return []
+    if len(text) <= chars_per_line:
+        return [text]
+
+    import re
+    try:
+        import jieba
+    except Exception:
+        return _split_by_chars(text, chars_per_line)
+
+    delimiters = "，。！？；、："
+    clauses = [c for c in re.findall(rf"[^{delimiters}]*[{delimiters}]?", text) if c]
+    lines = []
+    for clause in clauses:
+        if len(clause) <= chars_per_line:
+            lines.append(clause)
+            continue
+
+        raw_tokens = []
+        for part in re.findall(
+            r"[A-Za-z0-9._%/=+%-]+|[\u4e00-\u9fff]+|[^\u4e00-\u9fffA-Za-z0-9._%/=+%-]",
+            clause,
+        ):
+            if not part:
+                continue
+            if re.fullmatch(r"[A-Za-z0-9._%/=+%-]+", part) or not re.search(r"[\u4e00-\u9fff]", part):
+                raw_tokens.append(part)
+            else:
+                raw_tokens.extend(jieba.lcut(part, cut_all=False))
+
+        words = []
+        for token in raw_tokens:
+            if not token:
+                continue
+            if words and all(ch in delimiters for ch in token):
+                words[-1] += token
+            else:
+                words.append(token)
+
+        lines.extend(_wrap_words_balanced(words, chars_per_line))
+
+    return [line for line in lines if line]
+
+
+def _wrap_words_balanced(words: list[str], chars_per_line: int) -> list[str]:
+    """把词序列折成字幕行，尽量贴近目标行宽，并避免过短尾行。"""
+    n = len(words)
+    if n == 0:
+        return []
+
+    prefix = [0]
+    for word in words:
+        prefix.append(prefix[-1] + len(word))
+
+    inf = 10**9
+    dp = [inf] * (n + 1)
+    split_at = [-1] * (n + 1)
+    dp[n] = 0.0
+
+    for i in range(n - 1, -1, -1):
+        for j in range(i + 1, n + 1):
+            line_len = prefix[j] - prefix[i]
+            if line_len > chars_per_line and j - i > 1:
+                break
+            penalty = (chars_per_line - line_len) ** 2
+            if j < n and line_len < chars_per_line * 0.55:
+                penalty += 120
+            if dp[j] + penalty < dp[i]:
+                dp[i] = dp[j] + penalty
+                split_at[i] = j
+
+    lines = []
+    i = 0
+    while i < n:
+        j = split_at[i] if split_at[i] > i else i + 1
+        lines.append("".join(words[i:j]))
+        i = j
+    return lines
+
 
 def _ass_time(seconds: float) -> str:
     h = int(seconds // 3600)
@@ -276,7 +361,7 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
         audio_total_duration = sum(d[1] for d in probed_durations)
         target_duration = max(video_natural_duration, audio_total_duration)
         video_tail_pad = max(0.0, target_duration - video_natural_duration)
-        audio_tail_pad = max(0.0, target_duration - audio_total_duration)
+        audio_tail_pad = max(0.0, target_duration - video_natural_duration)
 
         # Use xfade for smooth transitions between clips
         if n > 1:
@@ -305,11 +390,21 @@ async def _concat_clips(clips: list[dict], output_path: str, size: str, resoluti
                 v_concat += f"tpad=stop_mode=clone:stop_duration={video_tail_pad:.3f}:start_duration=0,"
             filter_parts.append(f"{v_concat}format=yuv420p[vout]")
 
-        a_concat = "".join(a_labels)
-        filter_parts.append(f"{a_concat}concat=n={n}:v=0:a=1[aout]")
-        audio_out_label = "[aout]"
+        if n == 1:
+            audio_out_label = "[a_pad_0]"
+        else:
+            prev_audio = "[a_pad_0]"
+            for idx in range(1, n):
+                fade_label = f"afade{idx}"
+                filter_parts.append(
+                    f"{prev_audio}[a_pad_{idx}]acrossfade=d=0.3:c1=tri:c2=tri[{fade_label}]"
+                )
+                prev_audio = f"[{fade_label}]"
+            audio_out_label = prev_audio
         if audio_tail_pad > 0.01:
-            filter_parts.append(f"[aout]apad=whole_dur={target_duration:.3f}[aout_padded]")
+            filter_parts.append(
+                f"{audio_out_label}apad=whole_dur={target_duration:.3f}[aout_padded]"
+            )
             audio_out_label = "[aout_padded]"
         if ass_file:
             ass_path_fixed = ass_file.replace("\\", "/")
