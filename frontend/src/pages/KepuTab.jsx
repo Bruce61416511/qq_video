@@ -46,6 +46,7 @@ export default function KepuTab() {
   const [selectedProjectDir, setSelectedProjectDir] = useState("current")
   const [projectLoading, setProjectLoading] = useState(false)
   const [regeneratingAudioIdx, setRegeneratingAudioIdx] = useState(-1)
+  const [audioEpoch, setAudioEpoch] = useState(0)
 
   // maxStep 从数据自动推导：完成到哪个步骤
   const maxStep = composeResult ? 5 : clips.length > 0 ? 4 : scenes.length > 0 ? 3 : ttsResults.length > 0 ? 2 : narrations.length > 0 ? 1 : 0
@@ -63,6 +64,8 @@ export default function KepuTab() {
         if (saved.scenes) setScenes(saved.scenes)
         if (saved.clips) setClips(saved.clips)
         if (saved.composeResult) setComposeResult(saved.composeResult)
+        if (saved.audioEpoch) setAudioEpoch(saved.audioEpoch)
+        if (saved.activeTab) setActiveTab(saved.activeTab)
       }
     } catch (e) {}
     setLoaded(true)
@@ -70,9 +73,9 @@ export default function KepuTab() {
 
   useEffect(() => {
     if (!loaded) return
-    const state = { topic, totalDuration, fullScript, current, narrations, ttsResults, scenes, clips, composeResult }
+    const state = { topic, totalDuration, fullScript, current, narrations, ttsResults, scenes, clips, composeResult, audioEpoch, activeTab }
     localStorage.setItem("kepu_state", JSON.stringify(state))
-  }, [loaded, topic, totalDuration, fullScript, current, narrations, ttsResults, scenes, clips, composeResult])
+  }, [loaded, topic, totalDuration, fullScript, current, narrations, ttsResults, scenes, clips, composeResult, audioEpoch, activeTab])
 
   // 回到话题输入页时，如果 fullScript 为空但有旁白，从旁白重建
   useEffect(() => {
@@ -90,6 +93,7 @@ export default function KepuTab() {
     setScenes([])
     setClips([])
     setComposeResult(null)
+    setAudioEpoch(0)
     setFullScript("")
     setCurrent(0)
     localStorage.removeItem("kepu_state")
@@ -149,7 +153,7 @@ export default function KepuTab() {
     }
   }
 
-  const applyProjectData = (data) => {
+  const applyProjectData = (data, quiet = false) => {
     const project = data.project || {}
     const shots = Array.isArray(project.shots) ? project.shots : []
     const videoFiles = new Set(data.video_files || [])
@@ -185,13 +189,14 @@ export default function KepuTab() {
     })
     setClips(nextClips)
     setComposeResult(null)
+    setAudioEpoch(Date.now())
     setTotalDuration(Math.max(15, Math.ceil(nars.reduce((sum, n) => sum + (n.voice_script || "").length, 0) / 4)))
 
     const hasVideo = shots.some(s => s.video && videoFiles.has(s.video))
     const hasScene = shots.some(s => (s.scene_prompt || "").trim())
     const hasAudio = shots.some(s => s.audio && audioFiles.has(s.audio))
     setCurrent(hasVideo ? 4 : hasScene ? 3 : hasAudio ? 2 : shots.length ? 1 : 0)
-    message.success("项目已加载")
+    if (!quiet) message.success("项目已加载")
   }
 
   const handleLoadProject = async () => {
@@ -213,6 +218,33 @@ export default function KepuTab() {
       setProjectLoading(false)
     }
   }
+
+  const loadCurrentProject = async (quiet = false) => {
+    setProjectLoading(true)
+    try {
+      const res = await fetch("http://localhost:8000/api/kepu/projects/load", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dir: "current" }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.detail || "加载项目失败")
+      applyProjectData(data, quiet)
+      setSelectedProjectDir("current")
+      await fetchProjectDirs()
+    } catch (e) {
+      if (quiet) console.error("auto load current project failed", e)
+      else message.error("加载项目失败: " + e.message)
+    } finally {
+      setProjectLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (loaded) {
+      loadCurrentProject(true)
+    }
+  }, [loaded])
 
   const handleSaveCurrentProject = async () => {
     try {
@@ -379,6 +411,7 @@ export default function KepuTab() {
       const u = [...ttsResults]
       u[i] = { ...u[i], ...data.segment }
       setTtsResults(u)
+      setAudioEpoch(Date.now())
       await saveProjectQuietly(projectPayloadFrom(narrations, u, scenes))
       message.success("分镜 " + (i + 1) + " 音频已重新生成")
     } catch (e) {
@@ -543,7 +576,7 @@ export default function KepuTab() {
     const audioSrc = tts.audio_path
       ? (tts.audio_path.startsWith("http://") || tts.audio_path.startsWith("https://")
         ? tts.audio_path
-        : "http://localhost:8000" + tts.audio_path)
+        : "http://localhost:8000" + tts.audio_path) + "?v=" + (audioEpoch || 0)
       : ""
     const stageMap = { hook: "钩子", body: "正文", ending: "结尾", evidence: "论据", scene: "场景", cta: "行动号召" }
     const stageLabel = nar.stage && stageMap[nar.stage] ? ` · ${stageMap[nar.stage]}` : ""
@@ -738,7 +771,7 @@ export default function KepuTab() {
                     <Space><Tag color="blue">第{i + 1} 分镜</Tag>{tts && <Tag color="green">{tts.duration}s</Tag>}</Space>
                     <div style={{ fontSize: 13, color: "#666", marginTop: 4, whiteSpace: "pre-wrap", lineHeight: 1.7, wordBreak: "break-word" }}>{nar.voice_script}</div>
                     {tts?.audio_path ? (
-                      <audio controls style={{ width: "100%", marginTop: 8, height: 32 }} src={"http://localhost:8000" + tts.audio_path} />
+                      <audio controls style={{ width: "100%", marginTop: 8, height: 32 }} src={"http://localhost:8000" + tts.audio_path + "?v=" + (audioEpoch || 0)} />
                     ) : (
                       <div style={{ marginTop: 8, fontSize: 12, color: "#fa8c16" }}>⚠️ 该段配音生成失败，无音频可播放（TTS 服务/网络异常）</div>
                     )}
@@ -941,7 +974,14 @@ export default function KepuTab() {
 
   return (
     <div>
-      <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
+      <Tabs
+        activeKey={activeTab}
+        onChange={(key) => {
+          setActiveTab(key)
+          if (key === "modify") loadCurrentProject(true)
+        }}
+        items={tabItems}
+      />
       <Drawer
         title={editingFile ? <span><FileTextOutlined style={{ marginRight: 8 }} />{editingFile.filename}</span> : "编辑文件"}
         open={configDrawerOpen}
