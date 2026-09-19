@@ -28,6 +28,17 @@ router = APIRouter(prefix="/api/factory", tags=["factory"])
 _bg_tasks: set = set()
 
 
+def _uploads_url(path: str) -> str:
+    """本地路径 -> /uploads/... 静态 URL（兼容 avatars/ factory/ compose/ 等任意子目录）。"""
+    if not path:
+        return ""
+    try:
+        rel = Path(path).resolve().relative_to(UPLOAD_DIR.resolve()).as_posix()
+        return "/uploads/" + rel
+    except ValueError:
+        return ""
+
+
 class FactoryShotIn(BaseModel):
     scene_prompt: str
     voice_script: str = ""
@@ -50,7 +61,7 @@ def _task_dict(t: FactoryTask, shots: list[FactoryShot] | None = None) -> dict:
         "name": t.name,
         "avatar_id": t.avatar_id,
         "avatar_image": t.avatar_image or "",
-        "avatar_image_url": ("/uploads/avatars/" + Path(t.avatar_image).name) if t.avatar_image else "",
+        "avatar_image_url": _uploads_url(t.avatar_image),
         "size": t.size,
         "resolution": t.resolution,
         "status": t.status.value if hasattr(t.status, "value") else str(t.status),
@@ -73,7 +84,7 @@ def _shot_dict(s: FactoryShot) -> dict:
         "duration": s.duration or "5",
         "image_path": s.image_path or "",
         "clip_path": s.clip_path or "",
-        "clip_url": ("/uploads/" + Path(s.clip_path).name) if s.clip_path else "",
+        "clip_url": _uploads_url(s.clip_path),
         "audio_path": s.audio_path or "",
         "status": s.status or "pending",
         "error": s.error or "",
@@ -216,11 +227,18 @@ async def _generate_one_shot(task: FactoryTask, shot: FactoryShot):
     error = ""
     result = None
     if audio_path:
-        # 数字人模式：图 + 音频 -> wan2.2-s2v，口型与台词逐字同步
+        # 数字人模式：图 + 音频 -> 声画同步（默认 wan2.6-i2v-flash，可在设置 digital_human_model
+        # 切回 wan2.2-s2v；wan2.6 未开通时自动回退，不中断任务）
+        from ..config import get_setting as _gs
+        from ..services.video_gen_service import generate_talking_clip
+        dh_model = (await _gs("digital_human_model") or "").strip()
         try:
-            result = await generate_s2v_clip(image, audio_path, task.resolution)
+            result = await generate_talking_clip(image, audio_path, shot.scene_prompt or "", task.resolution)
+            if result.get("status") == "unpurchased" and dh_model != "wan2.2-s2v":
+                print("[Factory] wan2.6 数字人模型未开通，自动回退 wan2.2-s2v")
+                result = await generate_s2v_clip(image, audio_path, task.resolution)
         except Exception as e:
-            result = {"status": "error", "service": "s2v", "message": str(e)}
+            result = {"status": "error", "service": "talking", "message": str(e)}
     else:
         # 无台词：图生视频（起始帧 = 本镜图 or 任务形象图）
         try:
@@ -287,8 +305,9 @@ async def _compose_task(task_id: int):
             await db.commit()
             return
 
-        # 写入素材库
-        total_dur = sum(int(s.duration or 5) for s in shots)
+        # 写入素材库（时长探测真实片段时长：有台词分镜跟随配音，与设定的 duration 无关）
+        from ..services.video_composer import _probe_duration
+        total_dur = sum(round(_probe_duration(s.clip_path)) or int(s.duration or 5) for s in shots)
         media = Media(
             name=f"{task.name}.mp4",
             filepath=output_path,

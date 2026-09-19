@@ -101,6 +101,18 @@ export const imageApi = {
     method: 'POST',
     body: JSON.stringify({ prompt, image_url: imageUrl, duration, size, resolution }),
   }),
+  compose: async (files, instruction, size = '9:16') => {
+    const formData = new FormData()
+    files.forEach(f => formData.append('files', f))
+    formData.append('instruction', instruction)
+    formData.append('size', size)
+    const res = await fetch(`${BASE}/image/compose`, { method: 'POST', body: formData })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new Error(err.detail || 'Compose failed')
+    }
+    return res.json()
+  },
   polishPrompt: (prompt, mode = 'image') => request('/image/polish-prompt', {
     method: 'POST',
     body: JSON.stringify({ prompt, mode }),
@@ -114,9 +126,9 @@ export const imageApi = {
 
 export const avatarApi = {
   list: () => request('/avatars'),
-  create: (name, prompt, imageUrl) => request('/avatars', {
+  create: (name, prompt, imageUrl, imagePath = '') => request('/avatars', {
     method: 'POST',
-    body: JSON.stringify({ name, prompt, image_url: imageUrl }),
+    body: JSON.stringify({ name, prompt, image_url: imageUrl, image_path: imagePath }),
   }),
   upload: async (file, name, prompt = '') => {
     const formData = new FormData()

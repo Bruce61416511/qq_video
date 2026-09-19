@@ -16,9 +16,14 @@ _VIDEO_MODEL_DEFAULTS = {
 }
 
 # 图生视频默认模型（百炼），可在设置 video_model_i2v 中覆盖
-_I2V_MODEL_DEFAULT = "wan2.2-i2v-flash"
+_I2V_MODEL_DEFAULT = "wan2.6-i2v-flash"
 # 文生图默认模型（百炼），可在设置 image_model 中覆盖
 _T2I_MODEL_DEFAULT = "wan2.2-t2i-flash"
+# 多图合成（图像编辑）默认模型，可在设置 image_model_edit 中覆盖
+_EDIT_MODEL_DEFAULT = "qwen-image-3.0-edit"
+# 数字人（音频驱动）默认模型，可在设置 digital_human_model 中覆盖
+_TALKING_MODEL_DEFAULT = "wan2.6-i2v-flash"
+_LEGACY_TALKING_MODEL = "wan2.2-s2v"
 
 
 def _video_model_for(service: str) -> str:
@@ -29,6 +34,16 @@ def _video_model_for(service: str) -> str:
 def _ratio_to_pixels(size: str) -> str:
     """Map aspect ratio string to Bailian t2i pixel size."""
     return {"9:16": "720*1280", "16:9": "1280*720", "1:1": "1024*1024"}.get(size, "720*1280")
+
+
+def _edit_ratio_to_pixels(size: str, model: str = "") -> str:
+    """Map aspect ratio to qwen-image-edit 合成分辨率（尽量出高清起始帧）。
+
+    plus/max 系列每边上限 2048；qwen-image-3.0 系列每边上限 1440。
+    """
+    if "3.0" in model or "3-edit" in model:
+        return {"9:16": "810*1440", "16:9": "1440*810", "1:1": "1440*1440"}.get(size, "810*1440")
+    return {"9:16": "1080*1920", "16:9": "1920*1080", "1:1": "1440*1440"}.get(size, "1080*1920")
 
 
 def _image_to_url(image: str) -> str:
@@ -121,6 +136,29 @@ def _probe_audio_duration(audio_path: str) -> float:
     return 0.0
 
 
+def _pad_audio_if_short(audio_path: str, min_seconds: float = 3.0) -> str:
+    """wan2.6 系列要求音频 >=3s；过短的配音补尾部静音到 3s，返回（可能新生成的）文件路径。"""
+    import subprocess as _sub
+    from pathlib import Path as _Path
+
+    adur = _probe_audio_duration(audio_path)
+    if adur <= 0 or adur >= min_seconds:
+        return audio_path
+    out = str(_Path(audio_path).with_name(f"pad3_{_Path(audio_path).name}"))
+    try:
+        r = _sub.run(
+            ["ffmpeg", "-y", "-i", audio_path, "-af",
+             f"apad=whole_dur={min_seconds}", "-c:a", "libmp3lame", "-q:a", "4", out],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+        )
+        if r.returncode == 0 and _Path(out).exists():
+            print(f"[Talking] audio {adur:.1f}s < 3s, padded silence -> {out}")
+            return out
+    except Exception as e:
+        print(f"[Talking] pad audio failed: {e}")
+    return audio_path
+
+
 async def generate_s2v_clip(image_url: str, audio_path: str, resolution: str = "720P", progress_callback=None):
     """数字人口播生成（wan2.2-s2v，音频驱动口型同步）。
 
@@ -211,6 +249,105 @@ async def generate_s2v_clip(image_url: str, audio_path: str, resolution: str = "
         return {"status": "timeout", "service": "s2v", "task_id": task_id}
 
 
+async def generate_talking_clip(image_url: str, audio_path: str, motion_prompt: str = "", resolution: str = "1080P", progress_callback=None):
+    """数字人口播生成·新一代（wan2.6-i2v-flash 音频驱动，声画同步）。
+
+    相比 wan2.2-s2v 的升级：
+    - 支持 1080P 输出（s2v 上限 720P）
+    - duration 跟随配音时长（2~15s 整数），音频不会被压缩
+    - 提示词生效：motion_prompt 描述人物动作会被执行（s2v 完全忽略提示词）
+    - 画质与人物一致性更强
+
+    音频限制：WAV/MP3，3~15s（超过 15s 会被截断，直接报错提示拆分）。
+    返回 status="unpurchased" 表示模型未开通，调用方可回退 wan2.2-s2v。
+    """
+    import math
+
+    api_key = await get_setting("video_api_key")
+    workspace_id = await get_setting("video_api_secret")
+    if not api_key or not workspace_id:
+        return {"status": "no_api", "message": "未配置视频生成的百炼 KEY / workspace_id"}
+    if not image_url:
+        return {"status": "error", "service": "talking", "message": "缺少定妆照"}
+    if not audio_path:
+        return {"status": "error", "service": "talking", "message": "缺少配音音频"}
+
+    model = (await get_setting("digital_human_model") or _TALKING_MODEL_DEFAULT).strip()
+    # wan2.6 音频约束 3~30s：过短的台词自动补静音，避免 API 拒绝
+    audio_path = _pad_audio_if_short(audio_path)
+    adur = _probe_audio_duration(audio_path)
+    if adur and adur > 15.5:
+        return {"status": "error", "service": "talking",
+                "message": f"配音时长 {adur:.1f}s 超过 wan2.6 的 15s 上限，请缩短台词或拆分分镜"}
+    duration = max(2, min(15, math.ceil(adur) if adur else 5))
+
+    base_url = f"https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1"
+    res = "1080P" if str(resolution).upper() == "1080P" else "720P"
+
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        img = await _bailian_upload_file(api_key, model, image_url)
+        if not img:
+            return {"status": "error", "service": "talking", "message": "定妆照上传失败"}
+        aud = await _bailian_upload_file(api_key, model, audio_path)
+        if not aud:
+            return {"status": "error", "service": "talking", "message": "音频上传失败"}
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "X-DashScope-Async": "enable",
+            "X-DashScope-OssResourceResolve": "enable",
+        }
+        create_resp = await client.post(
+            f"{base_url}/services/aigc/video-generation/video-synthesis",
+            headers=headers,
+            json={
+                "model": model,
+                "input": {"prompt": (motion_prompt or "").strip(), "img_url": img, "audio_url": aud},
+                "parameters": {"resolution": res, "duration": duration, "prompt_extend": False},
+            },
+        )
+        if create_resp.status_code != 200:
+            error_text = create_resp.text[:500]
+            print(f"[Talking] create error ({model}): {error_text}")
+            if any(k in create_resp.text for k in ("Unpurchased", "AccessDenied", "ModelNotExist", "InvalidModel")):
+                return {"status": "unpurchased", "service": "talking",
+                        "message": f"模型 {model} 未开通：{error_text}"}
+            return {"status": "error", "service": "talking", "message": error_text}
+
+        task_id = create_resp.json().get("output", {}).get("task_id", "")
+        if not task_id:
+            print(f"[Talking] no task_id: {create_resp.text[:300]}")
+            return {"status": "error", "service": "talking", "message": "no task_id"}
+        print(f"[Talking] task created ({model}): {task_id}, duration={duration}s, res={res}")
+
+        for attempt in range(80):  # max ~20 min with 15s interval
+            await asyncio.sleep(15)
+            if progress_callback:
+                await progress_callback(min(99, int((attempt + 1) / 80 * 100)))
+            poll_resp = await client.get(
+                f"{base_url}/tasks/{task_id}",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+            if poll_resp.status_code != 200:
+                continue
+            poll_data = poll_resp.json()
+            status = poll_data.get("output", {}).get("task_status", "")
+            if status == "SUCCEEDED":
+                video_url = (poll_data.get("output", {}).get("results") or {}).get("video_url", "") \
+                    or poll_data.get("output", {}).get("video_url", "")
+                print(f"[Talking] done: {video_url[:60]}...")
+                return {"status": "done", "url": video_url, "task_id": task_id, "model": model}
+            if status == "FAILED":
+                msg = poll_data.get("output", {}).get("message", "unknown error")
+                print(f"[Talking] failed: {msg}")
+                return {"status": "error", "service": "talking", "message": msg}
+            if attempt % 4 == 0:
+                print(f"[Talking] polling... attempt {attempt + 1}, status={status}")
+
+        return {"status": "timeout", "service": "talking", "task_id": task_id}
+
+
 async def generate_image(prompt: str, size: str = "9:16", count: int = 1, progress_callback=None):
     """Text-to-image via Alibaba Bailian (wan2.2-t2i series).
 
@@ -280,6 +417,79 @@ async def generate_image(prompt: str, size: str = "9:16", count: int = 1, progre
                 return {"status": "error", "service": "wan_t2i", "message": msg}
 
         return {"status": "timeout", "service": "wan_t2i", "task_id": task_id}
+
+async def compose_image(image_paths: list, instruction: str, size: str = "9:16", progress_callback=None):
+    """多图合成起始帧（qwen-image-edit 系列，支持 1~3 张参考图 + 自然语言指令）。
+
+    典型用法：人物图 + 场景图 + 产品图 -> 合成"人物在场景中拿着产品"的起始帧。
+    模型可在设置 image_model_edit 中覆盖（qwen-image-edit-plus / -max）。
+
+    Returns: {"status": "done", "urls": [...]} on success.
+    """
+    api_key = await get_setting("image_api_key") or await get_setting("video_api_key")
+    workspace_id = await get_setting("image_api_secret") or await get_setting("video_api_secret")
+    if not api_key:
+        return {"status": "no_api", "message": "未配置 image_api_key / video_api_key"}
+    if not workspace_id:
+        return {"status": "no_api", "message": "未配置 image_api_secret / video_api_secret（workspace_id）"}
+    if not image_paths:
+        return {"status": "error", "service": "qwen_edit", "message": "缺少参考图"}
+    if not instruction.strip():
+        return {"status": "error", "service": "qwen_edit", "message": "缺少合成指令"}
+    if len(image_paths) > 3:
+        return {"status": "error", "service": "qwen_edit", "message": "参考图最多 3 张"}
+
+    model = (await get_setting("image_model_edit") or _EDIT_MODEL_DEFAULT).strip()
+    base_url = f"https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1"
+
+    # 上传本地参考图 -> oss://（该接口不接受 base64 data URI，走百炼临时存储）
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        image_urls = []
+        for p in image_paths:
+            u = await _bailian_upload_file(api_key, model, p)
+            if not u:
+                return {"status": "error", "service": "qwen_edit", "message": f"参考图上传失败: {p}"}
+            image_urls.append(u)
+
+        content = [{"image": u} for u in image_urls] + [{"text": instruction.strip()}]
+
+        body = {"model": model, "input": {"messages": [{"role": "user", "content": content}]}}
+        # 仅 plus/max/2.0/3.0 系列支持自定义分辨率；基础版 qwen-image-edit 固定输出
+        if size and any(tag in model for tag in ("plus", "max", "2.0", "3.0")):
+            body["parameters"] = {"size": _edit_ratio_to_pixels(size, model)}
+
+        print(f"[Compose] model={model}, images={len(image_urls)}, size={size}")
+        if progress_callback:
+            await progress_callback(30)
+
+        resp = await client.post(
+            f"{base_url}/services/aigc/multimodal-generation/generation",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "X-DashScope-OssResourceResolve": "enable",
+            },
+            json=body,
+        )
+        if resp.status_code != 200:
+            error_text = resp.text[:500]
+            print(f"[Compose] error: {error_text}")
+            return {"status": "error", "service": "qwen_edit", "message": error_text}
+
+        if progress_callback:
+            await progress_callback(90)
+
+        data = resp.json()
+        try:
+            out = data["output"]["choices"][0]["message"]["content"]
+            urls = [c["image"] for c in out if isinstance(c, dict) and c.get("image")]
+        except (KeyError, IndexError, TypeError):
+            urls = []
+        if not urls:
+            print(f"[Compose] no image in response: {resp.text[:300]}")
+            return {"status": "error", "service": "qwen_edit", "message": "响应中没有图片"}
+        return {"status": "done", "urls": urls, "model": model}
+
 
 async def generate_video_clip(prompt: str, duration: str = "5", size: str = "9:16", resolution: str = "1080P", progress_callback=None, image_url: str = ""):
     """Generate a video clip from text prompt, or from image+prompt (image-to-video).
@@ -420,16 +630,17 @@ async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, 
     # Map resolution (720P / 1080P)
     res = resolution if resolution in ("720P", "1080P") else "720P"
 
-    # Map duration to supported values, clamp to [5, 15]
+    # Map duration: wan2.6 系列支持 2~15s 整数，旧系列固定 5s
     try:
         dur = int(duration)
     except (ValueError, TypeError):
         dur = 5
+    is_26 = wan_model.startswith(("wan2.6", "wan2.7", "wan2.5"))
     if dur > 15:
         print(f"[VideoGen] Wan: duration {duration}s clamped to 15s max")
         dur = 15
-    if dur < 5:
-        dur = 5
+    if dur < 2:
+        dur = 2 if is_26 else 5
 
     async with httpx.AsyncClient(timeout=300.0) as client:
         # Step 1: Create video generation task
@@ -451,6 +662,11 @@ async def _wan_generate(prompt: str, duration: str, size: str, resolution: str, 
                 "duration": dur,
             },
         }
+        # wan2.6 系列默认自动生成背景音乐/音效；工厂流程的无台词分镜后续会铺 TTS 音轨，需保持无声
+        # wan2.6 系列的 i2v 画幅跟随输入图，不支持 ratio 参数，不能传
+        if is_i2v and is_26:
+            create_body["parameters"]["audio"] = False
+            create_body["parameters"].pop("ratio", None)
 
         print(f"[VideoGen] Wan create ({'i2v' if is_i2v else 't2v'}): model={wan_model}, res={res}, ratio={ratio}, dur={dur}s")
 

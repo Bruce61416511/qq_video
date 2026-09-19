@@ -38,12 +38,20 @@ class AvatarUpdate(BaseModel):
 
 
 def _to_dict(a: Avatar) -> dict:
+    # 图片可能在 avatars/ 或 compose/ 等任意 uploads 子目录，按真实路径拼接 URL
+    image_url = ""
+    if a.image_path:
+        try:
+            rel = Path(a.image_path).resolve().relative_to(UPLOAD_DIR.resolve()).as_posix()
+            image_url = "/uploads/" + rel
+        except ValueError:
+            image_url = ""
     return {
         "id": a.id,
         "name": a.name,
         "prompt": a.prompt or "",
         "image_path": a.image_path or "",
-        "image_url": ("/uploads/avatars/" + Path(a.image_path).name) if a.image_path else "",
+        "image_url": image_url,
         "is_default": bool(a.is_default),
         "created_at": a.created_at.strftime("%Y-%m-%d %H:%M:%S") if a.created_at else "",
     }

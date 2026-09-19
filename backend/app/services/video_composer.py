@@ -446,11 +446,14 @@ async def _run_ffmpeg(cmd: list, output_path: str) -> dict:
 
 def _scale_filter(size: str, resolution: str) -> str:
     targets = {
-        ("9:16", "1080P"): "scale=1080:1920",
-        ("9:16", "720P"): "scale=720:1280",
-        ("16:9", "1080P"): "scale=1920:1080",
-        ("16:9", "720P"): "scale=1280:720",
-        ("1:1", "1080P"): "scale=1080:1080",
-        ("1:1", "720P"): "scale=720:720",
+        ("9:16", "1080P"): ("1080", "1920"),
+        ("9:16", "720P"): ("720", "1280"),
+        ("16:9", "1080P"): ("1920", "1080"),
+        ("16:9", "720P"): ("1280", "720"),
+        ("1:1", "1080P"): ("1080", "1080"),
+        ("1:1", "720P"): ("720", "720"),
     }
-    return targets.get((size, resolution), "scale=1080:1920")
+    w, h = targets.get((size, resolution), ("1080", "1920"))
+    # wan2.6 系列输出尺寸不保证精确等于目标（画幅"尽量贴近"输入图比例），
+    # 等比缩放 + 居中补边，避免硬 scale 拉伸变形
+    return f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black"

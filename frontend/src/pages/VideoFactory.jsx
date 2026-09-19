@@ -37,7 +37,7 @@ function CreateTaskModal({ open, onClose, onCreated, avatars }) {
   const [avatarId, setAvatarId] = useState(null)
   const [size, setSize] = useState('9:16')
   const [resolution, setResolution] = useState('1080P')
-  const [shots, setShots] = useState([{ scene_prompt: '', voice_script: '', duration: '5' }])
+  const [shots, setShots] = useState([{ scene_prompt: '', voice_script: '', duration: '5', image_path: '' }])
   const [saving, setSaving] = useState(false)
   const { message } = App.useApp()
 
@@ -52,7 +52,7 @@ function CreateTaskModal({ open, onClose, onCreated, avatars }) {
       setAvatarId(d.avatarId ?? (avatars.find(a => a.is_default)?.id ?? null))
       setSize(d.size || '9:16')
       setResolution(d.resolution || '1080P')
-      setShots(Array.isArray(d.shots) && d.shots.length ? d.shots : [{ scene_prompt: '', voice_script: '', duration: '5' }])
+      setShots(Array.isArray(d.shots) && d.shots.length ? d.shots : [{ scene_prompt: '', voice_script: '', duration: '5', image_path: '' }])
     }
   }, [open])
 
@@ -65,13 +65,13 @@ function CreateTaskModal({ open, onClose, onCreated, avatars }) {
   const reset = () => {
     setName(''); setAvatarId(avatars.find(a => a.is_default)?.id ?? null)
     setSize('9:16'); setResolution('1080P')
-    setShots([{ scene_prompt: '', voice_script: '', duration: '5' }])
+    setShots([{ scene_prompt: '', voice_script: '', duration: '5', image_path: '' }])
   }
 
   const updateShot = (i, field, value) => {
     setShots(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: value } : s))
   }
-  const addShot = () => setShots(prev => [...prev, { scene_prompt: '', voice_script: '', duration: '5' }])
+  const addShot = () => setShots(prev => [...prev, { scene_prompt: '', voice_script: '', duration: '5', image_path: '' }])
   const removeShot = (i) => setShots(prev => prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev)
 
   const handleCreate = async (andGenerate) => {
@@ -89,7 +89,7 @@ function CreateTaskModal({ open, onClose, onCreated, avatars }) {
           scene_prompt: s.scene_prompt.trim(),
           voice_script: s.voice_script.trim(),
           duration: s.duration,
-          image_path: '',
+          image_path: s.image_path || '',
         })),
       })
       message.success('任务已创建')
@@ -152,8 +152,30 @@ function CreateTaskModal({ open, onClose, onCreated, avatars }) {
             extra={shots.length > 1 && <Button size="small" danger icon={<DeleteOutlined />} onClick={() => removeShot(i)} />}
           >
             <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 12, color: '#5f5e5a', marginBottom: 4 }}>
+                本镜起始帧（不选则使用任务默认形象；合成图会存进形象库，可在这里选）
+              </div>
+              <Select
+                value={s.image_path || ''}
+                onChange={v => updateShot(i, 'image_path', v)}
+                style={{ width: 260 }}
+                options={[
+                  { value: '', label: `任务默认形象${avatar ? `（${avatar.name}）` : ''}` },
+                  ...avatars.map(a => ({ value: a.image_path, label: a.name })),
+                ]}
+              />
+            </div>
+            <div style={{ marginBottom: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: '#5f5e5a' }}>画面提示词（起始帧自动使用所选形象 → 图生视频，人物不跑偏）</span>
+                {s.voice_script.trim() ? (
+                  <span style={{ fontSize: 12, color: '#b8860b' }}>
+                    画面提示词（本镜有台词 → 声画同步生成：提示词描述的动作会被执行，如"轻微点头、手持产品展示"；大动作建议写得小而具体，成功率更高）
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 12, color: '#5f5e5a' }}>
+                    画面提示词（本镜无台词 → 图生视频：提示词里的动作/运镜会被执行，起始帧自动使用上方所选形象）
+                  </span>
+                )}
                 <PolishButton prompt={s.scene_prompt} onDone={v => updateShot(i, 'scene_prompt', v)} />
               </div>
               <Input.TextArea value={s.scene_prompt} rows={2}
@@ -162,7 +184,7 @@ function CreateTaskModal({ open, onClose, onCreated, avatars }) {
             </div>
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, color: '#5f5e5a', marginBottom: 4 }}>台词（选填，填了会自动配音+口型同步+字幕，视频时长跟随配音）</div>
+                <div style={{ fontSize: 12, color: '#5f5e5a', marginBottom: 4 }}>台词（选填，填了会自动配音 + 声画同步，视频时长跟随配音，最多 15 秒）</div>
                 <Input.TextArea value={s.voice_script} rows={2}
                   onChange={e => updateShot(i, 'voice_script', e.target.value)}
                   placeholder="例：每天一小把坚果，肠道菌群会更喜欢哦" />

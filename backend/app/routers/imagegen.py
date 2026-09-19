@@ -1,16 +1,18 @@
-"""文生图 / 图生视频 独立接口。
+"""文生图 / 图生视频 / 多图合成 独立接口。
 
 POST /api/image/generate   文生图（定妆照、分镜起始帧）
 POST /api/image/to-video   图生视频（一张图 + 动作提示词 -> 视频片段）
+POST /api/image/compose    多图合成（人物图+场景图+产品图 -> 合成起始帧）
 """
+import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import clear_setting_cache, get_setting
+from ..config import UPLOAD_DIR, clear_setting_cache, get_setting
 from ..database import get_db
 from ..models import Setting
 
@@ -59,6 +61,63 @@ async def image_to_video_api(req: ImageToVideoRequest):
     return {"ok": result.get("status") == "done", **result}
 
 
+@router.post("/compose")
+async def compose_images_api(
+    files: list[UploadFile] = File(...),
+    instruction: str = Form(...),
+    size: str = Form("9:16"),
+):
+    """多图合成：上传 1~3 张参考图 + 合成指令 -> 合成图（结果保存到本地 uploads/compose/）。
+
+    例：图1人物 + 图2场景 + 图3产品，指令"把图1的人物放进图2的场景中，手里拿着图3的产品"。
+    """
+    import httpx
+
+    from ..services.video_gen_service import compose_image
+
+    if not files or not (1 <= len(files) <= 3):
+        return {"ok": False, "error": "请上传 1~3 张参考图"}
+    if not instruction.strip():
+        return {"ok": False, "error": "instruction 不能为空"}
+
+    tmp_dir = UPLOAD_DIR / "compose_tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = UPLOAD_DIR / "compose"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    local_paths = []
+    try:
+        for f in files:
+            ext = Path(f.filename or "img.png").suffix or ".png"
+            path = tmp_dir / f"ref_{uuid.uuid4().hex}{ext}"
+            path.write_bytes(await f.read())
+            local_paths.append(str(path))
+
+        result = await compose_image(local_paths, instruction, size=size)
+        if result.get("status") != "done":
+            return {"ok": False, **result}
+
+        url = result["urls"][0]
+        out_path = out_dir / f"compose_{uuid.uuid4().hex}.png"
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                return {"ok": False, "error": f"合成图下载失败: HTTP {resp.status_code}", "url": url}
+            out_path.write_bytes(resp.content)
+        return {
+            "ok": True,
+            "image_path": str(out_path),
+            "image_url": "/uploads/compose/" + out_path.name,
+            "model": result.get("model", ""),
+        }
+    finally:
+        for p in local_paths:
+            try:
+                Path(p).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
 @router.get("/models")
 async def list_default_models():
     """返回当前默认模型名，方便前端设置页展示。"""
@@ -84,12 +143,22 @@ POLISH_SYSTEM = {
         "重点描述「人物动作 + 镜头运动 + 表情变化 + 节奏」，动作幅度写小一点（适合口播视频），"
         "只输出最终提示词本身（一段中文，50~120字），不要任何解释、引号或前后缀。"
     ),
+    "compose": (
+        "你是多图合成指令专家。用户会用图1/图2/图3随意描述想要的合成效果（如人物+场景+产品），"
+        "你把它改写为一条专业的多图融合指令，核心目标是让合成结果像真实拍摄的单张照片，而不是拼贴。"
+        "规则：1.明确每张图的指代与作用（人物/场景/产品，顺序以用户描述为准）；"
+        "2.保真：人物长相发型服装与图1完全一致，产品瓶型材质标签及瓶身文字与图3逐字一致，不得改写或模糊化；"
+        "3.真实感：主光源方向与色温统一，人物和产品产生自然投影与接触阴影，比例透视与场景一致，边缘融合无光晕无抠图感；"
+        "4.质感：真实皮肤纹理不磨皮，色调景深与场景一致，像同一台相机拍出的一帧；"
+        "5.可补充构图景别、人物姿态与视线方向。"
+        "只输出最终指令本身（一段中文，120~200字），不要解释、引号或前后缀。"
+    ),
 }
 
 
 # ---- 润色 System Prompt 三级优先：设置库(页面可改) > prompts/*.txt 文件 > 代码默认值 ----
-POLISH_SETTING_KEYS = {"image": "polish_image_prompt", "video": "polish_video_prompt"}
-PROMPT_FILES = {"image": "polish_image_prompt.txt", "video": "polish_video_prompt.txt"}
+POLISH_SETTING_KEYS = {"image": "polish_image_prompt", "video": "polish_video_prompt", "compose": "polish_compose_prompt"}
+PROMPT_FILES = {"image": "polish_image_prompt.txt", "video": "polish_video_prompt.txt", "compose": "polish_compose_prompt.txt"}
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 
 

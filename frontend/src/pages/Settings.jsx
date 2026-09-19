@@ -21,6 +21,8 @@ const SETTING_KEYS = {
   video_api_secret: { label: '视频 百炼 WorkSpace ID', section: 'video' },
   image_model: { label: '文生图模型', section: 'video' },
   video_model_i2v: { label: '图生视频模型', section: 'video' },
+  image_model_edit: { label: '图像合成模型', section: 'video' },
+  digital_human_model: { label: '数字人模型', section: 'video' },
 }
 
 
@@ -120,8 +122,22 @@ const IMAGE_MODEL_OPTIONS = [
 ]
 
 const I2V_MODEL_OPTIONS = [
-  { value: 'wan2.2-i2v-flash', label: 'wan2.2-i2v-flash (快·便宜·推荐)' },
-  { value: 'wan2.2-i2v-plus', label: 'wan2.2-i2v-plus (质量更高)' },
+  { value: 'wan2.6-i2v-flash', label: 'wan2.6-i2v-flash (推荐·新一代·2~15s·1080P)' },
+  { value: 'wan2.6-i2v', label: 'wan2.6-i2v (新一代·质量更稳)' },
+  { value: 'wan2.2-i2v-flash', label: 'wan2.2-i2v-flash (旧版·快·便宜)' },
+  { value: 'wan2.2-i2v-plus', label: 'wan2.2-i2v-plus (旧版·质量更高)' },
+]
+
+const EDIT_MODEL_OPTIONS = [
+  { value: 'qwen-image-3.0-edit', label: 'qwen-image-3.0-edit (推荐·新一代·一致性最强)' },
+  { value: 'qwen-image-edit-max', label: 'qwen-image-edit-max (上一代·细节最强)' },
+  { value: 'qwen-image-edit-plus', label: 'qwen-image-edit-plus (上一代·可调分辨率)' },
+  { value: 'qwen-image-edit', label: 'qwen-image-edit (最便宜·固定分辨率)' },
+]
+
+const TALKING_MODEL_OPTIONS = [
+  { value: 'wan2.6-i2v-flash', label: 'wan2.6-i2v-flash (推荐·1080P·提示词动作生效)' },
+  { value: 'wan2.2-s2v', label: 'wan2.2-s2v (旧版·720P·仅口型同步)' },
 ]
 
 function getVideoModelOptions(service) {
@@ -367,10 +383,10 @@ export default function Settings() {
           <PictureOutlined style={{ fontSize: 22, color: '#005d50' }} />
           <div>
             <span style={{ fontWeight: 700, fontSize: 15 }}>图像生成</span>
-            <p style={{ margin: 0, fontSize: 12, color: '#8c8c8c' }}>形象工坊用：文生图定妆照 + 图生视频模型</p>
+            <p style={{ margin: 0, fontSize: 12, color: '#8c8c8c' }}>形象工坊用：文生图定妆照 + 多图合成 + 图生视频模型</p>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
           <div>
             <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>文生图模型</span>
             <Select
@@ -386,14 +402,34 @@ export default function Settings() {
             <Select
               style={{ width: '100%' }} disabled={locked}
               value={config['video_model_i2v']?.value || undefined}
-              placeholder="默认 wan2.2-i2v-flash"
+              placeholder="默认 wan2.6-i2v-flash"
               onChange={v => setConfig(prev => ({ ...prev, video_model_i2v: { ...prev['video_model_i2v'], value: v } }))}
               options={I2V_MODEL_OPTIONS}
             />
           </div>
+          <div>
+            <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>图像合成模型</span>
+            <Select
+              style={{ width: '100%' }} disabled={locked}
+              value={config['image_model_edit']?.value || undefined}
+              placeholder="默认 qwen-image-3.0-edit"
+              onChange={v => setConfig(prev => ({ ...prev, image_model_edit: { ...prev['image_model_edit'], value: v } }))}
+              options={EDIT_MODEL_OPTIONS}
+            />
+          </div>
+          <div>
+            <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>数字人模型（有台词分镜）</span>
+            <Select
+              style={{ width: '100%' }} disabled={locked}
+              value={config['digital_human_model']?.value || undefined}
+              placeholder="默认 wan2.6-i2v-flash（未开通自动回退旧版）"
+              onChange={v => setConfig(prev => ({ ...prev, digital_human_model: { ...prev['digital_human_model'], value: v } }))}
+              options={TALKING_MODEL_OPTIONS}
+            />
+          </div>
         </div>
         <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 10 }}>
-          API Key 复用上方「视频生成」的百炼配置，无需重复填写；不选则使用括号内默认值。
+          API Key 复用上方「视频生成」的百炼配置，无需重复填写；不选则使用括号内默认值。图像合成模型用于多图合成（人物+场景+产品）。
         </div>
       </Card>
 
