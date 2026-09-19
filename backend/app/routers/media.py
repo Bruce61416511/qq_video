@@ -299,6 +299,7 @@ async def _do_run_pipeline(media_id: int, req: VideoGenerateRequest):
                 size=req.size,
                 resolution=req.resolution,
                 progress_callback=update_progress if retry == 0 else None,
+                image_url=getattr(shot, "image_url", "") or "",
             )
             if isinstance(video_result, dict) and video_result.get("status") == "done":
                 break

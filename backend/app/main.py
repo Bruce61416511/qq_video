@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from .database import init_db
-from .routers import accounts, media, publish, settings, trends, kepu
+from .routers import accounts, media, publish, settings, trends, kepu, imagegen, avatars, factory
 from .services.worker import start_worker
 from .config import UPLOAD_DIR
 
@@ -39,6 +39,9 @@ app.include_router(publish.router)
 app.include_router(settings.router)
 app.include_router(trends.router)
 app.include_router(kepu.router)
+app.include_router(imagegen.router)
+app.include_router(avatars.router)
+app.include_router(factory.router)
 
 @app.get("/api/health")
 async def health():

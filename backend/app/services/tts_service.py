@@ -49,8 +49,12 @@ async def generate_voice(text: str, voice_id: str = None, output_path: str = Non
         return await _edge_tts(text, output_path, edge_voice)
 
     if service == "bailian_tts":
-        model = await get_setting("tts_model") or "qwen-audio-3.0-tts-flash"
-        voice = await get_setting("tts_voice") or "longanhuan_v3.6"
+        model = await get_setting("tts_model") or "cosyvoice-v2"
+        # 兜底：模型名无效（如误填 edge_tts 等）时回落到实测可用的 cosyvoice-v2
+        if not str(model).startswith(("cosyvoice", "qwen")):
+            print(f"[TTS] invalid bailian model '{model}', fallback to cosyvoice-v2")
+            model = "cosyvoice-v2"
+        voice = await get_setting("tts_voice") or "longxiaochun_v2"
         return await _bailian_tts(text, output_path, api_key, model, voice)
 
     if service == "openai_tts":

@@ -3,7 +3,7 @@ import { Routes, Route, useNavigate, useLocation } from "react-router-dom"
 import { Layout, Menu, ConfigProvider, theme } from "antd"
 import {
   TeamOutlined, VideoCameraOutlined, ThunderboltOutlined, ExperimentOutlined, BulbOutlined,
-  HistoryOutlined, SettingOutlined, FireOutlined,
+  HistoryOutlined, SettingOutlined, FireOutlined, PictureOutlined, AudioOutlined,
 } from "@ant-design/icons"
 import Accounts from "./pages/Accounts"
 import MediaLibrary from "./pages/MediaLibrary"
@@ -13,6 +13,8 @@ import PublishTasks from "./pages/PublishTasks"
 import Settings from "./pages/Settings"
 import TrendBoard from "./pages/TrendBoard"
 import CompetitorAnalysis from "./pages/CompetitorAnalysis"
+import AvatarStudio from "./pages/AvatarStudio"
+import VideoFactory from "./pages/VideoFactory"
 
 const { Sider, Content } = Layout
 
@@ -22,6 +24,8 @@ const menuItems = [
   { key: "/competitor", icon: <ExperimentOutlined />, label: "爆款拆解" },
   { key: "/text-to-video", icon: <ThunderboltOutlined />, label: "产品创作" },
   { key: "/kepu", icon: <BulbOutlined />, label: "科普创作" },
+  { key: "/avatar-studio", icon: <PictureOutlined />, label: "形象工坊" },
+  { key: "/video-factory", icon: <AudioOutlined />, label: "口播工厂" },
   { key: "/media", icon: <VideoCameraOutlined />, label: "素材管理" },
   { key: "/tasks", icon: <HistoryOutlined />, label: "发布记录" },
   { key: "/settings", icon: <SettingOutlined />, label: "设置" },
@@ -138,6 +142,8 @@ export default function App() {
               <Route path="/media" element={<MediaLibrary />} />
               <Route path="/text-to-video" element={<TextToVideo />} />
               <Route path="/kepu" element={<KepuTab />} />
+              <Route path="/avatar-studio" element={<AvatarStudio />} />
+              <Route path="/video-factory" element={<VideoFactory />} />
               <Route path="/tasks" element={<PublishTasks />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>

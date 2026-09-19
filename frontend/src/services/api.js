@@ -92,6 +92,58 @@ export const settingsApi = {
   set: (key, value) => request('/settings/' + key, { method: 'PUT', body: JSON.stringify({ value }) }),
 }
 
+export const imageApi = {
+  generate: (prompt, size = '9:16', count = 1) => request('/image/generate', {
+    method: 'POST',
+    body: JSON.stringify({ prompt, size, count }),
+  }),
+  toVideo: (prompt, imageUrl, duration = '5', size = '9:16', resolution = '1080P') => request('/image/to-video', {
+    method: 'POST',
+    body: JSON.stringify({ prompt, image_url: imageUrl, duration, size, resolution }),
+  }),
+  polishPrompt: (prompt, mode = 'image') => request('/image/polish-prompt', {
+    method: 'POST',
+    body: JSON.stringify({ prompt, mode }),
+  }),
+  getPolishConfig: (mode) => request('/image/polish-prompt-config/' + mode),
+  savePolishConfig: (mode, prompt) => request('/image/polish-prompt-config/' + mode, {
+    method: 'PUT',
+    body: JSON.stringify({ prompt }),
+  }),
+}
+
+export const avatarApi = {
+  list: () => request('/avatars'),
+  create: (name, prompt, imageUrl) => request('/avatars', {
+    method: 'POST',
+    body: JSON.stringify({ name, prompt, image_url: imageUrl }),
+  }),
+  upload: async (file, name, prompt = '') => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('name', name)
+    formData.append('prompt', prompt)
+    const res = await fetch(`${BASE}/avatars/upload`, { method: 'POST', body: formData })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new Error(err.detail || 'Upload failed')
+    }
+    return res.json()
+  },
+  update: (id, data) => request('/avatars/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id) => request('/avatars/' + id, { method: 'DELETE' }),
+}
+
+export const factoryApi = {
+  list: () => request('/factory/tasks'),
+  get: (id) => request('/factory/tasks/' + id),
+  create: (data) => request('/factory/tasks', { method: 'POST', body: JSON.stringify(data) }),
+  delete: (id) => request('/factory/tasks/' + id, { method: 'DELETE' }),
+  generate: (id) => request('/factory/tasks/' + id + '/generate', { method: 'POST' }),
+  regenerateShot: (id, shotIndex) => request('/factory/tasks/' + id + '/shots/' + shotIndex + '/generate', { method: 'POST' }),
+  compose: (id) => request('/factory/tasks/' + id + '/compose', { method: 'POST' }),
+}
+
 export const trendsApi = {
   getReport: () => `${BASE}/trends/report`,
   getMethod: () => request('/trends/config/method'),

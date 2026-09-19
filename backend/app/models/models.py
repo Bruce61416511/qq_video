@@ -103,3 +103,52 @@ class CompetitorTemplate(Base):
     source = Column(Text, default="")
     framework = Column(Text, default="{}")
     created_at = Column(String, default=lambda: datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+
+class Avatar(Base):
+    """形象库：数字人定妆照。"""
+    __tablename__ = "avatars"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    prompt = Column(Text, default="")          # 生成时用的提示词（存档，方便再生成同款）
+    image_path = Column(String(500), default="")  # 本地路径（uploads/avatars/xxx.png）
+    is_default = Column(Integer, default=0)    # 1 = 默认形象
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
+
+class FactoryTaskStatus(str, enum.Enum):
+    draft = "draft"
+    generating = "generating"
+    done = "done"
+    failed = "failed"
+
+
+class FactoryTask(Base):
+    """口播工厂任务：固定形象 + 分镜 -> 批量图生视频 -> 合并成片。"""
+    __tablename__ = "factory_tasks"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    avatar_id = Column(Integer, default=0)
+    avatar_image = Column(String(500), default="")   # 生成时定妆照的本地路径快照
+    size = Column(String(10), default="9:16")
+    resolution = Column(String(10), default="1080P")
+    status = Column(Enum(FactoryTaskStatus), default=FactoryTaskStatus.draft)
+    media_id = Column(Integer, default=0)      # 合并成片写入素材库后的 Media.id
+    video_path = Column(String(500), default="")
+    error = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
+
+class FactoryShot(Base):
+    __tablename__ = "factory_shots"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, nullable=False, index=True)
+    shot_index = Column(Integer, nullable=False)
+    scene_prompt = Column(Text, default="")
+    voice_script = Column(Text, default="")
+    duration = Column(String(10), default="5")
+    image_path = Column(String(500), default="")   # 选填：本镜单独起始帧（默认用任务形象）
+    clip_path = Column(String(500), default="")
+    audio_path = Column(String(500), default="")
+    status = Column(String(20), default="pending")  # pending / generating / done / failed
+    error = Column(Text, default="")

@@ -62,6 +62,7 @@ class ShotItem(BaseModel):
     scene_prompt: str
     voice_script: str
     duration: str = "5"
+    image_url: str = ""  # 可选：起始帧图片（URL 或本地路径），提供则走图生视频
 
 class GenerateShotsRequest(BaseModel):
     topic: str

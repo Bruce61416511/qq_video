@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Card, Input, Button, Select, App, Space, Tag, Divider } from 'antd'
 import {
   SaveOutlined, EditOutlined, RobotOutlined, SoundOutlined, VideoCameraOutlined,
-  CheckCircleOutlined, ExclamationCircleOutlined
+  CheckCircleOutlined, ExclamationCircleOutlined, PictureOutlined
 } from '@ant-design/icons'
 import { settingsApi } from '../services/api'
 
@@ -19,6 +19,8 @@ const SETTING_KEYS = {
   video_model: { label: '视频模型', section: 'video' },
   video_api_key: { label: '视频 API Key', section: 'video' },
   video_api_secret: { label: '视频 百炼 WorkSpace ID', section: 'video' },
+  image_model: { label: '文生图模型', section: 'video' },
+  video_model_i2v: { label: '图生视频模型', section: 'video' },
 }
 
 
@@ -49,7 +51,8 @@ const TTS_VOICE_OPTIONS_BY_MODEL = {
     { value: 'longxiaoxia', label: '龙小夏 (活泼女声)' },
   ],
   'cosyvoice-v2': [
-    { value: 'longyichen', label: '龙一辰 (沉稳男声)' },
+    { value: 'longxiaochun_v2', label: '龙小春 v2 (知性女声)' },
+    { value: 'longwan_v2', label: '龙婉 v2 (温柔女声)' },
   ],
   'cosyvoice-v3-flash': [
     { value: 'longfei_v3', label: '龙飞 v3 (沉稳男声)' },
@@ -111,6 +114,16 @@ const VIDEO_MODEL_BY_SERVICE = {
   ],
 }
 
+const IMAGE_MODEL_OPTIONS = [
+  { value: 'wan2.2-t2i-flash', label: 'wan2.2-t2i-flash (快·便宜·推荐)' },
+  { value: 'wan2.2-t2i-plus', label: 'wan2.2-t2i-plus (质量更高)' },
+]
+
+const I2V_MODEL_OPTIONS = [
+  { value: 'wan2.2-i2v-flash', label: 'wan2.2-i2v-flash (快·便宜·推荐)' },
+  { value: 'wan2.2-i2v-plus', label: 'wan2.2-i2v-plus (质量更高)' },
+]
+
 function getVideoModelOptions(service) {
   return VIDEO_MODEL_BY_SERVICE[service] || VIDEO_MODEL_BY_SERVICE.wan
 }
@@ -156,7 +169,26 @@ function ServiceCard({ icon, title, desc, serviceKey, keyKey, secretKey, service
           style={{ width: '100%' }} disabled={locked}
           value={config[serviceKey]?.value || undefined}
           placeholder="选择服务商"
-          onChange={v => setConfig(prev => ({ ...prev, [serviceKey]: { ...prev[serviceKey], value: v } }))}
+          onChange={v => setConfig(prev => {
+            const next = { ...prev, [serviceKey]: { ...prev[serviceKey], value: v } }
+            // 切换服务商时，模型/音色如果在新服务商下无效，自动重置为有效默认值
+            if (title === 'TTS 语音合成') {
+              const models = getTTSModelOptions(v)
+              const curModel = next.tts_model?.value
+              if (!models.some(m => m.value === curModel)) {
+                const newModel = models[0]?.value || ''
+                next.tts_model = { ...next.tts_model, value: newModel }
+                const voices = getTTSVoiceOptions(newModel, v)
+                next.tts_voice = { ...next.tts_voice, value: voices[0]?.value }
+              } else {
+                const voices = getTTSVoiceOptions(curModel, v)
+                if (voices.length && !voices.some(x => x.value === next.tts_voice?.value)) {
+                  next.tts_voice = { ...next.tts_voice, value: voices[0]?.value }
+                }
+              }
+            }
+            return next
+          })}
           options={serviceOptions}
         />
       </div>
@@ -329,6 +361,41 @@ export default function Settings() {
         hasSecret
         locked={locked}
       />
+
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          <PictureOutlined style={{ fontSize: 22, color: '#005d50' }} />
+          <div>
+            <span style={{ fontWeight: 700, fontSize: 15 }}>图像生成</span>
+            <p style={{ margin: 0, fontSize: 12, color: '#8c8c8c' }}>形象工坊用：文生图定妆照 + 图生视频模型</p>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div>
+            <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>文生图模型</span>
+            <Select
+              style={{ width: '100%' }} disabled={locked}
+              value={config['image_model']?.value || undefined}
+              placeholder="默认 wan2.2-t2i-flash"
+              onChange={v => setConfig(prev => ({ ...prev, image_model: { ...prev['image_model'], value: v } }))}
+              options={IMAGE_MODEL_OPTIONS}
+            />
+          </div>
+          <div>
+            <span style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 4 }}>图生视频模型</span>
+            <Select
+              style={{ width: '100%' }} disabled={locked}
+              value={config['video_model_i2v']?.value || undefined}
+              placeholder="默认 wan2.2-i2v-flash"
+              onChange={v => setConfig(prev => ({ ...prev, video_model_i2v: { ...prev['video_model_i2v'], value: v } }))}
+              options={I2V_MODEL_OPTIONS}
+            />
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 10 }}>
+          API Key 复用上方「视频生成」的百炼配置，无需重复填写；不选则使用括号内默认值。
+        </div>
+      </Card>
 
       {locked ? (
         <Button
